@@ -16,6 +16,10 @@ Keputusan tindak lanjut **tidak** diubah langsung di template periode yang sedan
 
 Untuk keputusan *Tambah indikator baru*, indikator induk dipertahankan pada targetnya dan indikator baru disisipkan di bawahnya dengan target masih kosong untuk diisi Admin Mutu.
 
+## Cakupan template awal
+
+Template contoh disusun dari Lampiran Peraturan Ketua No. 0128/PK/K/STIKOMCKI/VII/2023: **32 Kriteria Standar** (C1–C9, masing-masing dengan kode dokumennya), **55 Pernyataan Standar**, dan **123 indikator** — 97 kuantitatif dan 26 kualitatif. Indikator yang belum tercantum dapat ditambahkan lewat Manajemen Template.
+
 ## Data demo yang sudah tersedia
 
 Saat pertama dijalankan (atau setelah menekan **Reset ke data contoh** di bawah sidebar), aplikasi memuat dua skenario sekaligus:
@@ -36,7 +40,8 @@ Tiga akun disiapkan; berpindah peran lewat **Masuk sebagai** di sidebar:
 ## Fitur
 
 - **Manajemen template** — bagian → sub bagian → kriteria (kualitatif/kuantitatif), dengan identitas jenjang, fakultas, prodi, tahun ajaran, dan periode mulai/akhir penilaian.
-- **Kolom indikator mengikuti matriks Standar Mutu Berbasis Risiko** — setiap indikator punya jenis (IKU/IKT), objek yang diukur, satuan, arah target (≥ minimal atau ≤ maksimal), target ideal, potensi risiko, dan mitigasi risiko.
+- **Struktur mengikuti matriks Standar Mutu Berbasis Risiko** — Kriteria Standar (kode C1–C9 + kode dokumen) → Pernyataan Standar → Indikator. Setiap indikator punya jenis (IKU/IKT, nomor dihitung otomatis per kriteria), objek yang diukur, satuan, arah target (≥ minimal, ≤ maksimal, atau = pemenuhan penuh), target ideal, potensi risiko, dan mitigasi risiko.
+- **Target ditulis sesuai jenisnya** — indikator pemenuhan penuh ditulis `100 %` bukan `≥ 100 %`, indikator ketersediaan dokumen dibuat kualitatif dengan target `Tersedia, lengkap, dan disahkan` alih-alih dipaksa jadi persentase.
 - **Target tampil di form pengisian** — pengisi melihat target ideal, objek, satuan, serta risiko & mitigasi pada tiap indikator, dan langsung mendapat penanda "memenuhi target" / "di bawah target" beserta selisihnya saat mengisi realisasi. Target yang sama juga tampil di lembar penilaian Penjamin Mutu sebagai acuan skor.
 - **Manajemen pengguna** — tambah pengguna dengan nama, email, dan role (dibatasi 3 opsi: Admin Mutu, Fakultas/Prodi, Penjamin Mutu).
 - **Simulasi login & akses per role** — pilih "Masuk sebagai" di sidebar untuk berpindah antar pengguna; menu yang tampil otomatis menyesuaikan role pengguna tersebut (Admin → Template & Pengguna; Fakultas/Prodi → Form Penilaian; Penjamin Mutu → Penilaian Mutu).
