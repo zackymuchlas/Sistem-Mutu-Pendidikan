@@ -16,6 +16,32 @@ Keputusan tindak lanjut **tidak** diubah langsung di template periode yang sedan
 
 Untuk keputusan *Tambah indikator baru*, indikator induk dipertahankan pada targetnya dan indikator baru disisipkan di bawahnya dengan target masih kosong untuk diisi Admin Mutu.
 
+## Kesesuaian dengan siklus CQI berbasis PPEPP (LAM-INFOKOM)
+
+| Tahap | Penerapan di sistem |
+|---|---|
+| **Ditetapkan** | Manajemen Template: kriteria standar + kode dokumen, pernyataan standar, indikator IKU/IKT kualitatif & kuantitatif, penanda sumber standar (SN-DIKTI atau Standar PT yang melampaui SN-DIKTI), serta dasar penetapan berupa nomor SK, tanggal, dan pejabat penetap. Tiap indikator ditetapkan **PIC pelaksananya**. |
+| **Dilaksanakan** | Form Penilaian per unit kerja. Setiap unit hanya melihat dan mengisi indikator yang PIC pelaksananya unit tersebut; satu periode berisi banyak laporan pelaksanaan, satu per unit. |
+| **Dievaluasi** | Penilaian Mutu oleh Penjamin Mutu: skor 0–100, **metode pengukuran** (telaah dokumen, survei, statistik, observasi, wawancara, uji petik), dan **klasifikasi temuan** praktik baik / buruk / baru. |
+| **Dikendalikan** | RTM menyusun keputusan dan RTL; setelah disetujui, RTL turun ke menu **Tindak Lanjut Saya** milik unit pelaksana masing-masing, tempat unit memperbarui status pelaksanaan dan catatan progres. |
+| **Ditingkatkan** | Keputusan RTM diterapkan **oleh Pimpinan**, bukan Admin Mutu: periode asal dikunci sebagai riwayat, lalu terbentuk template periode berikutnya dengan ambang batas yang diperketat atau indikator baru. |
+
+## Pembagian PIC
+
+Menugaskan 123 indikator satu per satu tidak realistis, jadi tombol **Usulkan PIC otomatis** di Manajemen Template mengisi unit pelaksana dari nama Kriteria Standar dan kolom Objek — misalnya objek "Anggaran penelitian" ke Bagian Keuangan, "Dosen Tetap Penghitung Rasio" ke Bagian SDM. Usulan tetap bisa dikoreksi. Indikator tanpa PIC ditandai peringatan karena tidak akan muncul di form unit mana pun.
+
+Unit kerjanya mengikuti Buku Kebijakan Mutu SPMI bagian 5.e, sehingga pembagian tanggung jawabnya punya dasar dokumen. PIC disimpan sebagai unit, bukan nama orang, supaya pergantian pejabat tidak memecah riwayat pengisian unit yang sama.
+
+## Riwayat & laporan PDF
+
+- **Riwayat Penilaian** — rekam jejak setiap periode yang sudah dikirim atau dinilai, terbaru di atas, lengkap dengan skor rata-rata, jumlah indikator yang memenuhi/tidak memenuhi, jumlah dokumen bukti, dan cap waktu pengiriman serta penilaian. Dapat dicari per fakultas, prodi, atau tahun ajaran.
+- **Laporan Hasil Penilaian Mutu Internal (PDF)** — dokumen lengkap berisi kop institusi, identitas periode, ringkasan capaian, rincian seluruh indikator per Kriteria Standar (indikator, objek, target ideal, realisasi, capaian, skor, catatan Penjamin Mutu), daftar dokumen bukti, dan blok tanda tangan.
+- **Rencana Tindak Lanjut (RTL)** — menu tersendiri yang memuat hanya indikator **tidak memenuhi target**, masing-masing dengan akar masalah, rencana tindak lanjut, keputusan RTM, penanggung jawab, dan tenggat. Tersedia sebagai laporan PDF terpisah.
+
+Keduanya dicetak lewat dialog cetak browser dengan tujuan **Save as PDF**. Ukuran A4, margin, pemenggalan halaman, dan pengulangan header tabel sudah diatur di `src/index.css`, sehingga sidebar dan tombol tidak ikut tercetak.
+
+Penanggung jawab RTL dipilih dari daftar pengguna pada Manajemen Pengguna, disimpan sebagai id sekaligus nama, sehingga laporan tetap terbaca meskipun akunnya berubah.
+
 ## Cakupan template awal
 
 Template contoh disusun dari Lampiran Peraturan Ketua No. 0128/PK/K/STIKOMCKI/VII/2023: **32 Kriteria Standar** (C1–C9, masing-masing dengan kode dokumennya), **55 Pernyataan Standar**, dan **123 indikator** — 97 kuantitatif dan 26 kualitatif. Indikator yang belum tercantum dapat ditambahkan lewat Manajemen Template.
@@ -31,11 +57,17 @@ Saat pertama dijalankan (atau setelah menekan **Reset ke data contoh** di bawah 
 
 Realisasi pada template pertama sengaja dibuat campuran — 18 indikator melampaui target, 11 di bawah target — supaya penanda capaian dan tombol tindak lanjut PPEPP (*Lanjutkan target periode berikutnya* / *Perketat ambang batas* / *Tambah indikator baru*) terlihat langsung di Manajemen Template.
 
-Tiga akun disiapkan; berpindah peran lewat **Masuk sebagai** di sidebar:
+Dua belas akun disiapkan mencakup delapan unit kerja; berpindah peran lewat **Masuk sebagai** di sidebar:
 
-- `Admin Mutu Pusat` — Manajemen Template & Pengguna
-- `Kaprodi Sistem Informasi` — Form Penilaian
-- `Penjamin Mutu` — Penilaian Mutu
+| Akun | Role | Unit kerja |
+|---|---|---|
+| Kepala LPM | Admin Mutu | LPM |
+| Ketua STIKOM CKI | Pimpinan | Pimpinan |
+| Auditor Mutu Internal | Penjamin Mutu | LPM |
+| Wakil Ketua 1 Bidang Akademik | Unit Pelaksana | Pimpinan |
+| Kaprodi Sistem Informasi | Unit Pelaksana | Program Studi |
+| Ketua LPPM | Unit Pelaksana | LPPM |
+| Kabag Keuangan / SDM / Akademik / IT / Perpustakaan / Staf LPM | Unit Pelaksana | masing-masing |
 
 ## Fitur
 

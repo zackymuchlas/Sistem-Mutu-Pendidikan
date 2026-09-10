@@ -10,3 +10,54 @@ body {
   margin: 0;
   background: #F3F4F1;
 }
+
+/* ---------- Tampilan cetak / simpan sebagai PDF ----------
+   Layar aplikasi disembunyikan, hanya elemen .lembar-cetak yang dicetak,
+   sehingga hasil PDF bersih tanpa sidebar dan tombol. */
+@page {
+  size: A4;
+  margin: 16mm 14mm 18mm 14mm;
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+  .tanpa-cetak {
+    display: none !important;
+  }
+  .area-cetak {
+    position: absolute !important;
+    inset: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    overflow: visible !important;
+  }
+  .lembar-cetak {
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+    font-size: 9.5pt;
+  }
+  /* Header tabel diulang di setiap halaman */
+  .lembar-cetak thead {
+    display: table-header-group;
+  }
+  .lembar-cetak tr,
+  .lembar-cetak .hindari-potong {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .lembar-cetak .halaman-baru {
+    break-before: page;
+    page-break-before: always;
+  }
+  a[href]::after {
+    content: "";
+  }
+}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Trash2, ChevronDown, ChevronRight, FileText, Upload, ClipboardCheck, LayoutTemplate, ArrowLeft, Search, Check, X, GraduationCap, Building2, BookOpen, Calendar, Star, Save, Send, Eye, Users, UserPlus, LogOut, Paperclip, Download, TrendingUp, Lock, AlertTriangle, ArrowRight } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, FileText, Upload, ClipboardCheck, LayoutTemplate, ArrowLeft, Search, Check, X, GraduationCap, Building2, BookOpen, Calendar, Star, Save, Send, Eye, Users, UserPlus, LogOut, Paperclip, Download, TrendingUp, Lock, AlertTriangle, ArrowRight, Printer } from "lucide-react";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -37,7 +37,7 @@ const EMPTY_TEMPLATE = () => ({
 
 /* Struktur mengikuti matriks Lampiran Peraturan Ketua No. 0128/PK/K/STIKOMCKI/VII/2023:
    Kriteria Standar (+ kode dokumen)  ->  Pernyataan Standar  ->  Indikator (IKU/IKT). */
-const EMPTY_SECTION = () => ({ id: uid(), kode: "", title: "", kodeDokumen: "", subsections: [] });
+const EMPTY_SECTION = () => ({ id: uid(), kode: "", title: "", kodeDokumen: "", sumberStandar: "institusi", subsections: [] });
 const EMPTY_SUBSECTION = () => ({ id: uid(), title: "", fields: [] });
 const EMPTY_FIELD = () => ({
   id: uid(),
@@ -45,6 +45,7 @@ const EMPTY_FIELD = () => ({
   jenis: "IKU", // IKU = Indikator Kinerja Utama, IKT = Indikator Kinerja Tambahan
   type: "qualitative",
   objek: "", // objek yang diukur (mis. Dosen, Mahasiswa, Dokumen, Kegiatan)
+  unitPengisi: "", // PIC pelaksana: unit kerja yang wajib melaporkan realisasi indikator ini
   unit: "",
   maxScore: 100,
   target: "", // ambang batas / target capaian (mis. "100" untuk 100%)
@@ -113,22 +114,59 @@ function compareToTarget(field, rawValue) {
   return { status: meetsTarget(field, valueNum, targetNum) ? "tercapai" : "belum", gap };
 }
 
-// Opsi role dibatasi hanya 3 ini
-const ROLE_OPTIONS = [
-  { id: "admin", label: "Admin Mutu", icon: LayoutTemplate, desc: "Kelola template & pengguna" },
-  { id: "pengisi", label: "Fakultas / Prodi", icon: BookOpen, desc: "Isi form penilaian" },
-  { id: "penjamin", label: "Penjamin Mutu", icon: ClipboardCheck, desc: "Beri skor & komentar" },
+/* Unit kerja penanggung jawab SPMI, mengikuti Buku Kebijakan Mutu SPMI bagian
+   5.e "Unit Pejabat Khusus Penanggungjawab SPMI". Dipakai sebagai PIC pelaksana
+   pada tiap indikator sekaligus unit kerja pada akun pengguna. */
+const UNIT_OPTIONS = [
+  { id: "pimpinan", label: "Pimpinan STIKOM CKI", singkat: "Pimpinan" },
+  { id: "prodi", label: "Pimpinan Program Studi", singkat: "Program Studi" },
+  { id: "lppm", label: "Lembaga Penelitian dan Pengabdian Masyarakat (LPPM)", singkat: "LPPM" },
+  { id: "lpm", label: "Lembaga Penjaminan Mutu (LPM)", singkat: "LPM" },
+  { id: "keuangan", label: "Bagian Keuangan", singkat: "Keuangan" },
+  { id: "sdm", label: "Bagian SDM", singkat: "SDM" },
+  { id: "akademik", label: "Bagian Akademik, Pengajaran dan Kemahasiswaan", singkat: "Akademik & Kemahasiswaan" },
+  { id: "it", label: "Bagian Informasi & Teknologi", singkat: "Informasi & Teknologi" },
+  { id: "perpustakaan", label: "Bagian Perpustakaan", singkat: "Perpustakaan" },
+];
+const unitById = (id) => UNIT_OPTIONS.find((u) => u.id === id) || null;
+const namaUnit = (id, singkat = false) => {
+  const u = unitById(id);
+  if (!u) return "Belum ditetapkan";
+  return singkat ? u.singkat : u.label;
+};
+
+/* Sumber standar: turunan SN-DIKTI atau standar tambahan yang ditetapkan
+   perguruan tinggi sendiri (melampaui SN-DIKTI). */
+const SUMBER_STANDAR = [
+  { id: "sndikti", label: "SN-DIKTI", desc: "Turunan Permendikbud No. 3 Tahun 2020" },
+  { id: "institusi", label: "Standar PT", desc: "Standar tambahan STIKOM CKI, melampaui SN-DIKTI" },
 ];
 
-const EMPTY_USER = () => ({ id: uid(), name: "", email: "", role: "pengisi" });
+const ROLE_OPTIONS = [
+  { id: "admin", label: "Admin Mutu", icon: LayoutTemplate, desc: "Kelola template & pengguna" },
+  { id: "pengisi", label: "Unit Pelaksana", icon: BookOpen, desc: "Isi indikator milik unitnya" },
+  { id: "penjamin", label: "Penjamin Mutu", icon: ClipboardCheck, desc: "Evaluasi: skor, metode & temuan" },
+  { id: "pimpinan", label: "Pimpinan", icon: TrendingUp, desc: "Setujui RTM & peningkatan standar" },
+];
+
+const EMPTY_USER = () => ({ id: uid(), name: "", email: "", role: "pengisi", unit: "" });
 
 /* Ketiga role di-seed sekaligus. Sebelumnya hanya Admin Mutu yang dibuat,
    sehingga menu "Form Penilaian" dan "Penilaian Mutu" tidak pernah muncul —
    form terlihat seperti tidak bisa diisi padahal memang belum ada akunnya. */
 const SEED_USERS = () => [
-  { id: uid(), name: "Admin Mutu Pusat", email: "admin@kampus.ac.id", role: "admin" },
-  { id: uid(), name: "Kaprodi Sistem Informasi", email: "kaprodi.si@kampus.ac.id", role: "pengisi" },
-  { id: uid(), name: "Penjamin Mutu", email: "penjamin@kampus.ac.id", role: "penjamin" },
+  { id: uid(), name: "Kepala LPM", email: "lpm@stikomcki.ac.id", role: "admin", unit: "lpm" },
+  { id: uid(), name: "Ketua STIKOM CKI", email: "ketua@stikomcki.ac.id", role: "pimpinan", unit: "pimpinan" },
+  { id: uid(), name: "Auditor Mutu Internal", email: "ami@stikomcki.ac.id", role: "penjamin", unit: "lpm" },
+  { id: uid(), name: "Kaprodi Sistem Informasi", email: "kaprodi.si@stikomcki.ac.id", role: "pengisi", unit: "prodi" },
+  { id: uid(), name: "Wakil Ketua 1 Bidang Akademik", email: "waket1@stikomcki.ac.id", role: "pengisi", unit: "pimpinan" },
+  { id: uid(), name: "Ketua LPPM", email: "lppm@stikomcki.ac.id", role: "pengisi", unit: "lppm" },
+  { id: uid(), name: "Kabag Keuangan", email: "keuangan@stikomcki.ac.id", role: "pengisi", unit: "keuangan" },
+  { id: uid(), name: "Kabag SDM", email: "sdm@stikomcki.ac.id", role: "pengisi", unit: "sdm" },
+  { id: uid(), name: "Kabag Akademik & Kemahasiswaan", email: "akademik@stikomcki.ac.id", role: "pengisi", unit: "akademik" },
+  { id: uid(), name: "Kabag Informasi & Teknologi", email: "it@stikomcki.ac.id", role: "pengisi", unit: "it" },
+  { id: uid(), name: "Kabag Perpustakaan", email: "perpustakaan@stikomcki.ac.id", role: "pengisi", unit: "perpustakaan" },
+  { id: uid(), name: "Staf LPM", email: "staf.lpm@stikomcki.ac.id", role: "pengisi", unit: "lpm" },
 ];
 
 const STORAGE_KEY = "qa-app-data";
@@ -161,6 +199,9 @@ function cloneFieldAsNewIndicator(field) {
     objek: field.objek,
     unit: field.unit,
     arah: field.arah,
+    // PIC pelaksana ikut diwarisi — tanpa ini indikator baru tidak muncul di
+    // form unit mana pun dan tidak akan pernah terisi.
+    unitPengisi: field.unitPengisi,
     target: "",
     risiko: field.risiko,
     mitigasi: field.mitigasi,
@@ -199,6 +240,10 @@ function SEED_QA_TEMPLATE(identity = {}) {
     tahunAjaran: "2026/2027 Ganjil",
     periodeMulai: "",
     periodeAkhir: "",
+    // Dasar penetapan — butir pertama tahap "Standar Ditetapkan" pada siklus CQI
+    noSK: "0128/PK/K/STIKOMCKI/VII/2023",
+    tanggalPenetapan: "2023-07-20",
+    pejabatPenetap: "Mesra Betty Yel, S.E., M.M., M.Kom. — Ketua STIKOM CKI",
     status: "published",
     ...identity,
     sections: [
@@ -1379,6 +1424,90 @@ function SEED_QA_TEMPLATE(identity = {}) {
   };
 }
 
+/* ---------------- USULAN PIC & SUMBER STANDAR ----------------
+   Menugaskan 123 indikator satu per satu itu tidak realistis, jadi sistem
+   mengusulkan unit pelaksana dari nama Kriteria Standar dan kolom Objek —
+   sesuai pembagian tugas pada Buku Kebijakan Mutu bagian 5.e. Usulan ini tetap
+   bisa dikoreksi Admin Mutu di Manajemen Template. */
+const PETA_UNIT_STANDAR = [
+  [/visi|misi|tata pamong|tata kelola|kerja sama/i, "pimpinan"],
+  [/penjaminan mutu internal/i, "lpm"],
+  [/penerimaan mahasiswa|kemahasiswaan|promosi/i, "akademik"],
+  [/dosen dan tenaga kependidikan|sumber daya manusia/i, "sdm"],
+  [/pembiayaan|pendanaan|keuangan/i, "keuangan"],
+  [/prasarana pkm|prasarana pengabdian/i, "lppm"],
+  [/prasarana/i, "it"],
+  [/peneliti\b|penelitian/i, "lppm"],
+  [/pkm|pengabdian/i, "lppm"],
+  [/pembelajaran|kompetensi lulusan/i, "prodi"],
+];
+
+/* Objek tertentu lebih menentukan daripada nama standarnya. */
+const PETA_UNIT_OBJEK = [
+  [/perpustakaan/i, "perpustakaan"],
+  [/tenaga kependidikan/i, "sdm"],
+  [/anggaran|biaya|opini audit|badan usaha/i, "keuangan"],
+  [/ruang kelas|laboratorium/i, "it"],
+];
+
+function usulUnitPengisi(judulStandar, objek) {
+  for (const [pola, unit] of PETA_UNIT_OBJEK) if (pola.test(objek || "")) return unit;
+  for (const [pola, unit] of PETA_UNIT_STANDAR) if (pola.test(judulStandar || "")) return unit;
+  return "lpm";
+}
+
+/* Standar tambahan yang ditetapkan STIKOM CKI sendiri (melampaui SN-DIKTI).
+   Sisanya merupakan turunan Permendikbud No. 3 Tahun 2020. */
+const STANDAR_INSTITUSI = [
+  "Standar Visi, Misi, Tujuan, dan Strategi",
+  "Standar Tata Pamong",
+  "Standar Tata Kelola",
+  "Standar Kerja Sama",
+  "Standar Sistem Penjaminan Mutu Internal",
+  "Standar Penerimaan Mahasiswa",
+  "Standar Kemahasiswaan",
+  "Standar Sarana dan Prasarana Kemahasiswaan",
+  "Standar Promosi",
+  "Standar Sumber Daya Manusia",
+  "Standar Keuangan",
+];
+const usulSumberStandar = (judul) => (STANDAR_INSTITUSI.includes(judul) ? "institusi" : "sndikti");
+
+/* Lengkapi template dengan usulan sumber standar & unit pelaksana untuk
+   indikator yang belum ditetapkan PIC-nya. Mengembalikan jumlah yang terisi. */
+function lengkapiPicOtomatis(template) {
+  let terisi = 0;
+  template.sections.forEach((sec) => {
+    if (!sec.sumberStandar) sec.sumberStandar = usulSumberStandar(sec.title);
+    sec.subsections.forEach((ss) =>
+      ss.fields.forEach((f) => {
+        if (!f.unitPengisi) {
+          f.unitPengisi = usulUnitPengisi(sec.title, f.objek);
+          terisi += 1;
+        }
+      })
+    );
+  });
+  return terisi;
+}
+
+/* Indikator milik satu unit pada sebuah template. */
+function indikatorUnit(template, unit) {
+  return template.sections.flatMap((s) =>
+    s.subsections.flatMap((ss) => ss.fields.filter((f) => f.unitPengisi === unit))
+  );
+}
+
+/* Daftar unit yang punya indikator pada template ini, beserta jumlahnya. */
+function unitTerlibat(template) {
+  const hitung = {};
+  template.sections.forEach((s) =>
+    s.subsections.forEach((ss) => ss.fields.forEach((f) => { hitung[f.unitPengisi || ""] = (hitung[f.unitPengisi || ""] || 0) + 1; }))
+  );
+  return UNIT_OPTIONS.filter((u) => hitung[u.id]).map((u) => ({ ...u, jumlah: hitung[u.id] }))
+    .concat(hitung[""] ? [{ id: "", label: "Belum ditetapkan", singkat: "Belum ditetapkan", jumlah: hitung[""] }] : []);
+}
+
 /* Lepas properti _demo dari template dan kembalikan sebagai peta fieldId -> data isian. */
 function extractDemo(template) {
   const demo = {};
@@ -1410,44 +1539,79 @@ function extractDemo(template) {
 const DEMO_DOC_B64 = "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA1OTUgODQyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA1IDAgUiA+PiA+PiAvQ29udGVudHMgNCAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCAzNzUgPj4Kc3RyZWFtCkJUIC9GMSAxMSBUZiA2MCA3NjAgVGQgMTYgVEwKKERPS1VNRU4gUEVORFVLVU5HIC0gQ09OVE9IKSBUaiBUKgooKSBUaiBUKgooQmVya2FzIGluaSBhZGFsYWggbGFtcGlyYW4gY29udG9oIHBhZGEgZGF0YSBkZW1vKSBUaiBUKgooU2lzdGVtIFBlbmlsYWlhbiBNdXR1IFBlbmRpZGlrYW4gKFNQTUkpLikgVGogVCoKKCkgVGogVCoKKFBhZGEgcGVuZ2d1bmFhbiBzdW5nZ3VoYW4sIGJlcmthcyBpbmkgZGlnYW50aSBkZW5nYW4pIFRqIFQqCihidWt0aSBkdWt1bmcgYXNsaTogU0ssIGxhcG9yYW4sIHJla2FwIGRhdGEsIGJlcml0YSBhY2FyYSwpIFRqIFQqCihkYWZ0YXIgaGFkaXIsIGF0YXUgZG9rdW1lbiBsYWluIHNlc3VhaSBpbmRpa2F0b3IuKSBUaiBUKgpFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDY2NyAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjczNwolJUVPRgo=";
 const DEMO_DOC_DATA_URL = `data:application/pdf;base64,${DEMO_DOC_B64}`;
 
-/* Bangun submission lengkap (isian + penilaian) dari peta demo milik template.
-   Karena peta itu di-key dengan id indikator hasil extractDemo(), isian selalu
-   menempel pada indikator yang benar meski urutan atau jumlahnya berubah. */
-function buildDemoSubmission(template, pengisi, demo) {
-  const fields = template.sections.flatMap((s) => s.subsections.flatMap((ss) => ss.fields));
-  const answers = {};
-  const reviews = {};
+/* Bangun satu submission per unit pelaksana. Setiap unit hanya memuat
+   indikator yang menjadi tanggung jawabnya, diisi oleh akun unit tersebut. */
+function buildDemoSubmissions(template, users, demo) {
+  const metode = ["telaah-dokumen", "statistik", "survei", "observasi", "wawancara", "uji-petik"];
+  return unitTerlibat(template)
+    .filter((u) => u.id)
+    .map((u, idx) => {
+      const milik = indikatorUnit(template, u.id);
+      const pengisi = users.find((x) => x.role === "pengisi" && x.unit === u.id)
+        || users.find((x) => x.unit === u.id)
+        || users.find((x) => x.role === "pengisi");
+      const answers = {}, reviews = {};
+      milik.forEach((f, i) => {
+        const d = demo[f.id];
+        const value = d ? d.v : f.target || "Terpenuhi sesuai dokumen pendukung.";
+        answers[f.id] = {
+          value: String(value),
+          doc: d && d.doc
+            ? { fileName: d.doc, fileSize: 920, fileType: "application/pdf", fileData: DEMO_DOC_DATA_URL }
+            : null,
+        };
+        const c = compareToTarget(f, value);
+        reviews[f.id] = {
+          score: String(d ? d.skor : 80),
+          comment: d ? d.k : "Bukti dukung memadai.",
+          metode: metode[(idx + i) % metode.length],
+          // Tidak memenuhi target -> praktik buruk; melampaui jauh -> praktik baik
+          temuan: c.status === "belum" ? "buruk" : c.status === "tercapai" && c.gap > 0 ? "baik" : "baru",
+        };
+      });
+      return {
+        id: uid(),
+        templateId: template.id,
+        unit: u.id,
+        filledBy: pengisi ? pengisi.name : namaUnit(u.id, true),
+        filledByEmail: pengisi ? pengisi.email : "",
+        status: "reviewed",
+        dibuatPada: "2026-06-02T08:15:00.000Z",
+        dikirimPada: "2026-07-18T09:40:00.000Z",
+        dinilaiPada: "2026-07-29T14:05:00.000Z",
+        answers,
+        reviews,
+      };
+    });
+}
 
-  fields.forEach((f) => {
-    const d = demo[f.id];
-    // Indikator tanpa data demo diisi seadanya dari targetnya sendiri.
-    const value = d ? d.v : f.target || "Terpenuhi sesuai dokumen pendukung.";
-    answers[f.id] = {
-      value: String(value),
-      doc: d && d.doc
-        ? { fileName: d.doc, fileSize: 920, fileType: "application/pdf", fileData: DEMO_DOC_DATA_URL }
-        : null,
-    };
-    reviews[f.id] = {
-      score: String(d ? d.skor : 80),
-      comment: d ? d.k : "Bukti dukung memadai.",
+/* Draf RTL untuk data demo. Akar masalah dan rencana tindak lanjutnya diambil
+   dari kolom potensi risiko dan mitigasi risiko indikator itu sendiri — sesuai
+   maksud matriks, mitigasi risiko memang rencana tindakannya. */
+function buildDemoRtl(template, submissions, users) {
+  const kandidatPj = users.filter((u) => u.role !== "pengisi");
+  const rows = buildRtlRows(template, submissions).map((r, i) => {
+    // Indikator berplafon yang sudah tercapai: usulan indikator baru diberi nama
+    // awal supaya keputusan RTM pada data demo sudah lengkap dan bisa diterapkan.
+    if (r.keputusan === "indikator_baru" && !r.indikatorBaruLabel) {
+      return { ...r, indikatorBaruLabel: `${r.label} — tahap lanjut`, penanggungJawabId: kandidatPj[0]?.id || "", penanggungJawab: kandidatPj[0]?.name || "" };
+    }
+    if (r.capaian !== "belum") return r;
+    const pj = kandidatPj[i % kandidatPj.length];
+    return {
+      ...r,
+      akarMasalah: r.risiko || "Capaian belum memenuhi ambang batas yang ditetapkan.",
+      rencanaTindakLanjut: r.mitigasi || "Menyusun langkah perbaikan pada periode berikutnya.",
+      penanggungJawabId: pj ? pj.id : "",
+      penanggungJawab: pj ? pj.name : "",
+      tenggat: "2027-06-30",
     };
   });
-
-  return {
-    id: uid(),
-    templateId: template.id,
-    filledBy: pengisi.name,
-    filledByEmail: pengisi.email,
-    status: "reviewed",
-    answers,
-    reviews,
-  };
+  return { tahunAjaranBaru: "2026/2027 Genap", rows };
 }
 
 function SEED_DEMO_DATA() {
   const users = SEED_USERS();
-  const pengisi = users.find((u) => u.role === "pengisi");
 
   // Skenario 1 — siklus penuh, sudah dinilai
   const templateSelesai = SEED_QA_TEMPLATE({
@@ -1467,13 +1631,19 @@ function SEED_DEMO_DATA() {
     status: "published",
   });
 
+  lengkapiPicOtomatis(templateSelesai);
+  lengkapiPicOtomatis(templateBaru);
   const demoSelesai = extractDemo(templateSelesai);
   extractDemo(templateBaru); // template kedua dibersihkan tanpa dipakai isiannya
 
+  const templates = [templateSelesai, templateBaru];
+  const submissions = buildDemoSubmissions(templateSelesai, users, demoSelesai);
+
   return {
     users,
-    templates: [templateSelesai, templateBaru],
-    submissions: [buildDemoSubmission(templateSelesai, pengisi, demoSelesai)],
+    templates,
+    submissions,
+    rtl: { [templateSelesai.id]: buildDemoRtl(templateSelesai, submissions, users) },
   };
 }
 
@@ -1481,16 +1651,21 @@ function SEED_DEMO_DATA() {
    strip target di form menampilkan "undefined". */
 function migrateTemplates(list) {
   return list.map((t) => ({
+    noSK: "",
+    tanggalPenetapan: "",
+    pejabatPenetap: "",
     ...t,
     sections: (t.sections || []).map((s) => ({
       kode: "",
       kodeDokumen: "",
+      sumberStandar: "",
       ...s,
       subsections: (s.subsections || []).map((ss) => ({
         ...ss,
         fields: (ss.fields || []).map((f) => ({
           jenis: "IKU",
           objek: "",
+          unitPengisi: "",
           arah: "min",
           target: "",
           risiko: "",
@@ -1531,6 +1706,7 @@ function useStore() {
           setTemplates(demo.templates);
           setSubmissions(demo.submissions);
           setUsers(demo.users);
+          setRtlStore(demo.rtl || {});
         } else {
           setTemplates(migrateTemplates(parsed.templates));
           setSubmissions(parsed.submissions || []);
@@ -1543,12 +1719,14 @@ function useStore() {
         setTemplates(demo.templates);
         setSubmissions(demo.submissions);
         setUsers(demo.users);
+        setRtlStore(demo.rtl || {});
       }
     } catch (e) {
       const demo = SEED_DEMO_DATA();
       setTemplates(demo.templates);
       setSubmissions(demo.submissions);
       setUsers(demo.users);
+      setRtlStore(demo.rtl || {});
     }
     setLoaded(true);
   }, []);
@@ -1597,8 +1775,8 @@ function useStore() {
     setTemplates(demo.templates);
     setSubmissions(demo.submissions);
     setUsers(demo.users);
-    setRtlStore({});
-    persist(demo.templates, demo.submissions, demo.users, {});
+    setRtlStore(demo.rtl || {});
+    persist(demo.templates, demo.submissions, demo.users, demo.rtl || {});
   };
 
   return { templates, submissions, users, rtlStore, saveTemplates, saveSubmissions, saveUsers, saveRtl, applyRtl, resetData, loaded };
@@ -1777,13 +1955,24 @@ const MENUS_BY_ROLE = {
   admin: [
     { id: "templates", label: "Manajemen Template", icon: LayoutTemplate, desc: "Susun kriteria mutu" },
     { id: "rtm", label: "Tindak Lanjut & RTM", icon: TrendingUp, desc: "Turunkan ke periode berikutnya" },
+    { id: "rtl", label: "Rencana Tindak Lanjut", icon: AlertTriangle, desc: "Indikator yang tidak memenuhi" },
+    { id: "riwayat", label: "Riwayat Penilaian", icon: Calendar, desc: "Rekam jejak & laporan PDF" },
     { id: "users", label: "Manajemen Pengguna", icon: Users, desc: "Kelola akun & role" },
   ],
   pengisi: [
-    { id: "form", label: "Form Penilaian", icon: BookOpen, desc: "Isi kriteria mutu" },
+    { id: "form", label: "Form Penilaian", icon: BookOpen, desc: "Isi indikator unit saya" },
+    { id: "tindak-lanjut", label: "Tindak Lanjut Saya", icon: AlertTriangle, desc: "RTL yang jadi tanggung jawab unit" },
+    { id: "riwayat", label: "Riwayat Penilaian", icon: Calendar, desc: "Hasil periode sebelumnya" },
   ],
   penjamin: [
-    { id: "review", label: "Penilaian Mutu", icon: ClipboardCheck, desc: "Beri skor & komentar" },
+    { id: "review", label: "Penilaian Mutu", icon: ClipboardCheck, desc: "Skor, metode & temuan" },
+    { id: "rtl", label: "Rencana Tindak Lanjut", icon: AlertTriangle, desc: "Indikator yang tidak memenuhi" },
+    { id: "riwayat", label: "Riwayat Penilaian", icon: Calendar, desc: "Rekam jejak & laporan PDF" },
+  ],
+  pimpinan: [
+    { id: "rtm", label: "Persetujuan RTM", icon: TrendingUp, desc: "Setujui & tingkatkan standar" },
+    { id: "rtl", label: "Rencana Tindak Lanjut", icon: AlertTriangle, desc: "Indikator yang tidak memenuhi" },
+    { id: "riwayat", label: "Riwayat Penilaian", icon: Calendar, desc: "Rekam jejak & laporan PDF" },
   ],
 };
 
@@ -1969,6 +2158,10 @@ function UserManagement({ users, onAdd, onDelete, currentUser }) {
       setError("Nama dan email wajib diisi.");
       return;
     }
+    if (form.role === "pengisi" && !form.unit) {
+      setError("Unit Pelaksana wajib punya unit kerja, karena unit itulah yang menentukan indikator mana yang harus diisi.");
+      return;
+    }
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailPattern.test(form.email.trim())) {
       setError("Format email tidak valid.");
@@ -2002,6 +2195,12 @@ function UserManagement({ users, onAdd, onDelete, currentUser }) {
           </Field>
           <Field label="Email">
             <TextInput type="email" placeholder="nama@kampus.ac.id" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          </Field>
+          <Field label="Unit kerja" hint="Menentukan indikator mana yang wajib diisi pengguna ini.">
+            <Select value={form.unit || ""} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
+              <option value="">— pilih unit kerja —</option>
+              {UNIT_OPTIONS.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
+            </Select>
           </Field>
           <Field label="Role">
             <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
@@ -2131,6 +2330,13 @@ function AdminList({ templates, onNew, onOpen, onDelete }) {
 function TemplateBuilder({ template, onChange, onBack, onSave, submissions = [] }) {
   const ro = !!template.terkunci; // periode sudah dikunci RTM -> hanya bisa dibaca
   const update = (patch) => onChange({ ...template, ...patch });
+  const semuaIndikator = template.sections.flatMap((s) => s.subsections.flatMap((ss) => ss.fields));
+  const tanpaPic = semuaIndikator.filter((f) => !f.unitPengisi).length;
+  const isiPicOtomatis = () => {
+    const salinan = JSON.parse(JSON.stringify(template));
+    lengkapiPicOtomatis(salinan);
+    onChange(salinan);
+  };
 
   const updateSection = (sid, patch) =>
     update({ sections: template.sections.map((s) => (s.id === sid ? { ...s, ...patch } : s)) });
@@ -2207,9 +2413,30 @@ function TemplateBuilder({ template, onChange, onBack, onSave, submissions = [] 
           <Field label="Periode mulai penilaian">
             <TextInput disabled={ro} type="date" value={template.periodeMulai} onChange={(e) => update({ periodeMulai: e.target.value })} />
           </Field>
+          <Field label="Nomor SK penetapan" hint="Dasar formal penetapan standar (SK / Peraturan Ketua).">
+            <TextInput disabled={ro} placeholder="contoh: 0128/PK/K/STIKOMCKI/VII/2023" value={template.noSK || ""} onChange={(e) => update({ noSK: e.target.value })} />
+          </Field>
+          <Field label="Tanggal penetapan">
+            <TextInput disabled={ro} type="date" value={template.tanggalPenetapan || ""} onChange={(e) => update({ tanggalPenetapan: e.target.value })} />
+          </Field>
+          <Field label="Pejabat yang menetapkan">
+            <TextInput disabled={ro} placeholder="contoh: Mesra Betty Yel, S.E., M.M., M.Kom. — Ketua STIKOM CKI" value={template.pejabatPenetap || ""} onChange={(e) => update({ pejabatPenetap: e.target.value })} />
+          </Field>
           <Field label="Periode akhir penilaian">
             <TextInput disabled={ro} type="date" value={template.periodeAkhir} onChange={(e) => update({ periodeAkhir: e.target.value })} />
           </Field>
+        </div>
+      </Card>
+
+      <Card style={{ padding: 18, marginBottom: 18 }}>
+        <div className="serif" style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginBottom: 10 }}>
+          Pembagian tanggung jawab pengisian
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {unitTerlibat(template).map((u) => (
+            <Badge key={u.id || "kosong"} tone={u.id ? "default" : "warn"}>{u.jumlah} · {u.singkat}</Badge>
+          ))}
+          {semuaIndikator.length === 0 && <Badge tone="muted">Belum ada indikator</Badge>}
         </div>
       </Card>
 
@@ -2229,6 +2456,16 @@ function TemplateBuilder({ template, onChange, onBack, onSave, submissions = [] 
         berikutnya, supaya data periode ini tetap utuh sebagai riwayat.
       </p>
 
+      {tanpaPic > 0 && !ro && (
+        <Card style={{ padding: 16, marginBottom: 14, borderLeft: "3px solid var(--warn)", background: "#FCFCFB" }}>
+          <div className="sans" style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.6, marginBottom: 10 }}>
+            <strong>{tanpaPic} indikator belum punya PIC pelaksana.</strong> Indikator tanpa PIC tidak akan muncul di form unit
+            mana pun, jadi tidak akan pernah terisi. Sistem bisa mengusulkan unitnya dari nama Kriteria Standar dan kolom Objek.
+          </div>
+          <Btn variant="outline" small icon={Users} onClick={isiPicOtomatis}>Usulkan PIC otomatis</Btn>
+        </Card>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 16 }}>
         {template.sections.map((section, si) => {
           const nomorSection = nomorIndikatorPerSection(section);
@@ -2237,7 +2474,7 @@ function TemplateBuilder({ template, onChange, onBack, onSave, submissions = [] 
             <div className="sans" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, color: "var(--muted)", marginBottom: 6 }}>
               KRITERIA STANDAR {si + 1}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "70px 1fr 170px 26px", gap: 8, alignItems: "center", marginBottom: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "70px 1fr 170px 132px 26px", gap: 8, alignItems: "center", marginBottom: 14 }}>
               <TextInput disabled={ro}
                 placeholder="C1"
                 value={section.kode || ""}
@@ -2258,6 +2495,15 @@ function TemplateBuilder({ template, onChange, onBack, onSave, submissions = [] 
                 title="Kode dokumen standar, contoh: CKI.03-08-00-02"
                 style={{ fontSize: 12.5 }}
               />
+              <Select
+                disabled={ro}
+                value={section.sumberStandar || "institusi"}
+                onChange={(e) => updateSection(section.id, { sumberStandar: e.target.value })}
+                title="Sumber standar: turunan SN-DIKTI atau standar tambahan perguruan tinggi"
+                style={{ fontSize: 12.5, padding: "8px 8px" }}
+              >
+                {SUMBER_STANDAR.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+              </Select>
               <button disabled={ro} onClick={() => removeSection(section.id)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--muted)" }}>
                 <Trash2 size={15} />
               </button>
@@ -2299,6 +2545,18 @@ function TemplateBuilder({ template, onChange, onBack, onSave, submissions = [] 
                             </button>
                           </div>
 
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8, marginTop: 8 }}>
+                            <Select
+                              disabled={ro}
+                              value={f.unitPengisi || ""}
+                              onChange={(e) => updateField(section.id, sub.id, f.id, { unitPengisi: e.target.value })}
+                              title="PIC pelaksana: unit kerja yang wajib melaporkan realisasi indikator ini"
+                              style={{ fontSize: 12.5, padding: "8px 10px", color: f.unitPengisi ? "var(--ink)" : "var(--warn)" }}
+                            >
+                              <option value="">PIC pelaksana belum ditetapkan</option>
+                              {UNIT_OPTIONS.map((u) => <option key={u.id} value={u.id}>PIC pelaksana: {u.label}</option>)}
+                            </Select>
+                          </div>
                           <div style={{ display: "grid", gridTemplateColumns: "82px 130px 1fr 100px 96px 100px", gap: 8, marginTop: 8 }}>
                             <Select disabled={ro}
                               value={f.jenis}
@@ -2454,6 +2712,13 @@ function TemplateBuilder({ template, onChange, onBack, onSave, submissions = [] 
       (status draf) — jadi tindak lanjut benar-benar terpakai, bukan hanya
       tercatat di notulen. */
 
+const STATUS_TL = [
+  { id: "belum", label: "Belum dikerjakan", tone: "warn" },
+  { id: "berjalan", label: "Sedang berjalan", tone: "muted" },
+  { id: "selesai", label: "Selesai", tone: "good" },
+];
+const statusTlById = (id) => STATUS_TL.find((x) => x.id === id) || STATUS_TL[0];
+
 const KEPUTUSAN_OPTIONS = [
   { id: "lanjutkan", label: "Lanjutkan target yang sama", untuk: "belum" },
   { id: "perketat", label: "Perketat ambang batas", untuk: "tercapai" },
@@ -2518,6 +2783,9 @@ function buildRtlRows(template, submissions) {
           unit: f.unit,
           arah: f.arah,
           diPlafon,
+          unitPengisi: f.unitPengisi || "",
+          risiko: f.risiko || "",
+          mitigasi: f.mitigasi || "",
           targetLama: f.target,
           realisasi: a.avg === null ? null : Math.round(a.avg * 100) / 100,
           capaian: a.status,
@@ -2525,8 +2793,14 @@ function buildRtlRows(template, submissions) {
           targetBaru: usulan === "perketat" ? targetDiperketat(f) : f.target,
           indikatorBaruLabel: "",
           akarMasalah: "",
+          rencanaTindakLanjut: "",
+          penanggungJawabId: "",
           penanggungJawab: "",
           tenggat: "",
+          statusTindakLanjut: "belum",
+          catatanProgres: "",
+          progresOleh: "",
+          progresPada: "",
         });
       })
     );
@@ -2543,17 +2817,34 @@ function mergeRtlRows(draft, saved) {
     byId[r.fieldId]
       ? { ...r, ...byId[r.fieldId], capaian: r.capaian, realisasi: r.realisasi, targetLama: r.targetLama,
           kriteria: r.kriteria, kodeDokumen: r.kodeDokumen, pernyataan: r.pernyataan, nomor: r.nomor, label: r.label,
-          arah: r.arah, unit: r.unit, jenis: r.jenis, diPlafon: r.diPlafon }
+          arah: r.arah, unit: r.unit, jenis: r.jenis, diPlafon: r.diPlafon,
+          risiko: r.risiko, mitigasi: r.mitigasi, unitPengisi: r.unitPengisi,
+          rencanaTindakLanjut: byId[r.fieldId].rencanaTindakLanjut || "",
+          penanggungJawabId: byId[r.fieldId].penanggungJawabId || "" }
       : r
   );
 }
 
+/* Daftar hal yang masih kurang pada satu baris RTL. Dipakai untuk menandai
+   baris dan menjelaskan mengapa tombol penerapan belum aktif. */
+function kekuranganRtl(row) {
+  const kurang = [];
+  if (!row.keputusan) kurang.push("keputusan RTM");
+  if (row.keputusan === "perketat" && String(row.targetBaru || "").trim() === "") kurang.push("ambang batas baru");
+  if (row.keputusan === "indikator_baru" && !(row.indikatorBaruLabel || "").trim()) kurang.push("nama indikator baru");
+  // Indikator yang tidak memenuhi target wajib punya RTL lengkap: akar masalah,
+  // rencana tindak lanjut, penanggung jawab, dan tenggat.
+  if (row.capaian === "belum") {
+    if (!(row.akarMasalah || "").trim()) kurang.push("akar masalah");
+    if (!(row.rencanaTindakLanjut || "").trim()) kurang.push("rencana tindak lanjut");
+    if (!(row.penanggungJawab || "").trim()) kurang.push("penanggung jawab");
+    if (!(row.tenggat || "").trim()) kurang.push("tenggat");
+  }
+  return kurang;
+}
+
 function rtlRowSiap(row) {
-  if (!row.keputusan) return false;
-  if (row.keputusan === "perketat" && String(row.targetBaru).trim() === "") return false;
-  if (row.keputusan === "indikator_baru" && row.indikatorBaruLabel.trim() === "") return false;
-  if (row.capaian === "belum" && row.akarMasalah.trim() === "") return false;
-  return true;
+  return kekuranganRtl(row).length === 0;
 }
 
 /* Turunkan seluruh keputusan RTL menjadi template periode berikutnya. */
@@ -2575,12 +2866,13 @@ function turunkanKePeriodeBerikutnya(source, rows, identitasBaru) {
     if (r.penanggungJawab) jejak.push(`PJ: ${r.penanggungJawab}`);
     if (r.tenggat) jejak.push(`tenggat ${r.tenggat}`);
     const ekor = jejak.length ? ` (${jejak.join(", ")})` : "";
+    const rtl = r.rencanaTindakLanjut ? ` Rencana tindak lanjut: ${r.rencanaTindakLanjut}` : "";
     const realisasiTeks = r.realisasi === null ? "tanpa data angka" : `realisasi ${r.realisasi}`;
 
     if (r.keputusan === "lanjutkan") {
       base.tindakLanjutCatatan =
         `RTL ${asal}: target ${r.targetLama} belum tercapai (${realisasiTeks}) — dilanjutkan dengan ambang batas yang sama.` +
-        (r.akarMasalah ? ` Akar masalah: ${r.akarMasalah}` : "") + ekor;
+        (r.akarMasalah ? ` Akar masalah: ${r.akarMasalah}` : "") + rtl + ekor;
       return [base];
     }
     if (r.keputusan === "perketat") {
@@ -2627,8 +2919,677 @@ function turunkanKePeriodeBerikutnya(source, rows, identitasBaru) {
   };
 }
 
+/* Tahap Evaluasi pada slide CQI meminta dua hal yang sebelumnya belum ada:
+   metode pengukuran indikator, dan klasifikasi temuan menjadi praktik baik,
+   buruk, atau baru — klasifikasi itulah yang dipakai unit pada tahap
+   Pengendalian. */
+const METODE_UKUR = [
+  { id: "telaah-dokumen", label: "Telaah dokumen" },
+  { id: "survei", label: "Survei" },
+  { id: "statistik", label: "Statistik / olah data" },
+  { id: "observasi", label: "Observasi lapangan" },
+  { id: "wawancara", label: "Wawancara" },
+  { id: "uji-petik", label: "Uji petik / sampling" },
+];
+const labelMetode = (id) => METODE_UKUR.find((m) => m.id === id)?.label || "Belum ditetapkan";
+
+const KLASIFIKASI_TEMUAN = [
+  { id: "baik", label: "Praktik baik", tone: "good" },
+  { id: "buruk", label: "Praktik buruk", tone: "warn" },
+  { id: "baru", label: "Praktik baru", tone: "default" },
+];
+const temuanById = (id) => KLASIFIKASI_TEMUAN.find((k) => k.id === id) || null;
+
+/* ---------------- RIWAYAT & LAPORAN ---------------- */
+/* Satu periode kini berisi banyak submission — satu per unit pelaksana.
+   Untuk laporan dan rekap capaian, isian seluruh unit digabung menjadi satu
+   peta jawaban/penilaian yang di-key dengan id indikator. */
+function gabungIsian(submissions, templateId) {
+  const subs = submissions.filter((s) => s.templateId === templateId);
+  const answers = {}, reviews = {}, unitDari = {};
+  subs.forEach((sub) => {
+    Object.entries(sub.answers || {}).forEach(([k, v]) => { answers[k] = v; unitDari[k] = sub.unit || ""; });
+    Object.entries(sub.reviews || {}).forEach(([k, v]) => { reviews[k] = v; });
+  });
+  return { answers, reviews, unitDari, subs };
+}
+
+/* Progres pengisian per unit pada satu periode. */
+function progresUnit(template, submissions) {
+  return unitTerlibat(template).map((u) => {
+    const sub = submissions.find((s) => s.templateId === template.id && s.unit === u.id);
+    const milik = indikatorUnit(template, u.id);
+    const terisi = sub ? milik.filter((f) => sub.answers[f.id] && String(sub.answers[f.id].value || "").trim() !== "").length : 0;
+    const dinilai = sub ? milik.filter((f) => sub.reviews[f.id] && sub.reviews[f.id].score !== "" && sub.reviews[f.id].score !== undefined).length : 0;
+    return { ...u, submission: sub || null, total: milik.length, terisi, dinilai, status: sub ? sub.status : "belum-mulai" };
+  });
+}
+
+const LABEL_STATUS_SUB = {
+  "belum-mulai": "Belum dimulai",
+  draft_fill: "Draf tersimpan",
+  submitted: "Terkirim",
+  reviewed: "Sudah dinilai",
+};
+
+
+
+const NAMA_INSTITUSI = "SEKOLAH TINGGI ILMU KOMPUTER CIPTA KARYA INFORMATIKA";
+const NAMA_UNIT = "Lembaga Penjaminan Mutu";
+
+function fmtTanggal(iso, denganJam = false) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  const tgl = d.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  return denganJam ? `${tgl}, ${d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : tgl;
+}
+
+/* Ringkasan satu periode penilaian: dipakai di riwayat maupun kepala laporan. */
+function ringkasanPenilaian(template, submission) {
+  const fields = template.sections.flatMap((s) => s.subsections.flatMap((ss) => ss.fields));
+  let tercapai = 0, belum = 0, kualitatif = 0, terisi = 0;
+  const skor = [];
+  fields.forEach((f) => {
+    const ans = submission.answers[f.id];
+    if (ans && String(ans.value || "").trim() !== "") terisi += 1;
+    const c = compareToTarget(f, ans && ans.value);
+    if (c.status === "tercapai") tercapai += 1;
+    else if (c.status === "belum") belum += 1;
+    else kualitatif += 1;
+    const sc = Number(submission.reviews[f.id]?.score);
+    if (!isNaN(sc) && submission.reviews[f.id]?.score !== "") skor.push(sc);
+  });
+  return {
+    total: fields.length,
+    terisi,
+    tercapai,
+    belum,
+    kualitatif,
+    dinilai: skor.length,
+    skorRata: skor.length ? skor.reduce((a, b) => a + b, 0) / skor.length : null,
+    dokumen: fields.filter((f) => submission.answers[f.id]?.doc).length,
+  };
+}
+
+/* Semua periode yang sudah punya minimal satu unit mengirim isian. */
+function daftarRiwayat(templates, submissions) {
+  return templates
+    .map((t) => {
+      const subs = submissions.filter((s) => s.templateId === t.id);
+      const terkirim = subs.filter((s) => s.status === "submitted" || s.status === "reviewed");
+      if (terkirim.length === 0) return null;
+      const gab = gabungIsian(submissions, t.id);
+      const tanggal = terkirim
+        .map((s) => s.dinilaiPada || s.dikirimPada)
+        .filter(Boolean)
+        .sort()
+        .pop() || null;
+      return {
+        template: t,
+        submissions: subs,
+        unit: progresUnit(t, submissions),
+        ringkasan: ringkasanPenilaian(t, gab),
+        tanggal,
+        selesaiDinilai: terkirim.length > 0 && terkirim.every((s) => s.status === "reviewed"),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(b.tanggal || "").localeCompare(String(a.tanggal || "")));
+}
+
+/* Kepala surat laporan — sama untuk laporan penilaian maupun laporan RTL. */
+function KopLaporan({ judul, template, keterangan }) {
+  return (
+    <div className="hindari-potong" style={{ textAlign: "center", borderBottom: "2px solid var(--ink)", paddingBottom: 12, marginBottom: 18 }}>
+      <div className="sans" style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, color: "var(--ink)" }}>{NAMA_INSTITUSI}</div>
+      <div className="sans" style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>{NAMA_UNIT}</div>
+      <div className="serif" style={{ fontSize: 17, fontWeight: 700, color: "var(--ink)", lineHeight: 1.35 }}>{judul}</div>
+      <div className="sans" style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4 }}>{labelPeriode(template)}</div>
+      {keterangan && <div className="sans" style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{keterangan}</div>}
+    </div>
+  );
+}
+
+function BarisIdentitas({ isi }) {
+  return (
+    <table className="sans hindari-potong" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5, marginBottom: 18 }}>
+      <tbody>
+        {isi.map(([k, v]) => (
+          <tr key={k}>
+            <td style={{ padding: "3px 0", width: 190, color: "var(--muted)", verticalAlign: "top" }}>{k}</td>
+            <td style={{ padding: "3px 0", width: 12, color: "var(--muted)", verticalAlign: "top" }}>:</td>
+            <td style={{ padding: "3px 0", color: "var(--ink)", fontWeight: 500, verticalAlign: "top" }}>{v}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function BlokTandaTangan({ kolom }) {
+  return (
+    <div className="hindari-potong" style={{ display: "flex", justifyContent: "space-between", gap: 24, marginTop: 34 }}>
+      {kolom.map((k) => (
+        <div key={k.jabatan} className="sans" style={{ fontSize: 11.5, textAlign: "center", flex: 1 }}>
+          <div style={{ color: "var(--muted)" }}>{k.jabatan}</div>
+          <div style={{ height: 58 }} />
+          <div style={{ borderTop: "1px solid var(--ink)", paddingTop: 4, fontWeight: 600, color: "var(--ink)" }}>
+            {k.nama || "(...................................)"}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const thGaya = {
+  border: "1px solid var(--border)", padding: "6px 7px", background: "#F3F4F1",
+  fontSize: 10, fontWeight: 700, color: "var(--ink)", textAlign: "left", verticalAlign: "middle",
+};
+const tdGaya = {
+  border: "1px solid var(--border)", padding: "5px 7px", fontSize: 10, color: "var(--ink)", verticalAlign: "top", lineHeight: 1.45,
+};
+
+/* ---------------- LAPORAN PENILAIAN (seluruh form + realisasi) ---------------- */
+function LaporanPenilaian({ template, submissions, users, onBack }) {
+  // Laporan memuat seluruh periode: isian semua unit digabung jadi satu dokumen
+  const gab = gabungIsian(submissions, template.id);
+  const submission = { answers: gab.answers, reviews: gab.reviews };
+  const r = ringkasanPenilaian(template, submission);
+  const unit = progresUnit(template, submissions);
+  const penjamin = users.find((u) => u.role === "penjamin");
+  const admin = users.find((u) => u.role === "admin");
+  const pimpinan = users.find((u) => u.role === "pimpinan");
+  const tglNilai = unit.map((u) => u.submission?.dinilaiPada).filter(Boolean).sort().pop();
+  const tglKirim = unit.map((u) => u.submission?.dikirimPada).filter(Boolean).sort().pop();
+  const temuanTally = KLASIFIKASI_TEMUAN.map((k) => ({
+    ...k,
+    n: Object.values(gab.reviews).filter((rv) => rv?.temuan === k.id).length,
+  }));
+
+  return (
+    <div>
+      <div className="tanpa-cetak" style={{ marginBottom: 18 }}>
+        <button onClick={onBack} className="sans" style={{ display: "flex", alignItems: "center", gap: 6, border: "none", background: "transparent", color: "var(--muted)", fontSize: 13, cursor: "pointer", marginBottom: 14 }}>
+          <ArrowLeft size={14} /> Kembali ke riwayat penilaian
+        </button>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <Btn variant="gold" icon={Printer} onClick={() => window.print()}>Cetak / simpan sebagai PDF</Btn>
+          <div className="sans" style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.6, maxWidth: 560 }}>
+            Dialog cetak browser akan terbuka. Pilih tujuan <strong>Save as PDF</strong> (atau Simpan sebagai PDF) untuk
+            menghasilkan berkas laporan. Ukuran kertas A4 dan margin sudah diatur otomatis.
+          </div>
+        </div>
+      </div>
+
+      <div className="area-cetak">
+        <Card className="lembar-cetak" style={{ padding: 34, maxWidth: 900 }}>
+          <KopLaporan
+            judul="LAPORAN HASIL PENILAIAN MUTU INTERNAL"
+            template={template}
+            keterangan="Berdasarkan Standar Mutu Berbasis Risiko — Lampiran Peraturan Ketua No. 0128/PK/K/STIKOMCKI/VII/2023"
+          />
+
+          <BarisIdentitas
+            isi={[
+              ["Fakultas", template.fakultas || "—"],
+              ["Program studi", template.prodi || "—"],
+              ["Jenjang", template.jenjang || "—"],
+              ["Tahun ajaran / periode", template.tahunAjaran || "—"],
+              ["Rentang periode", template.periodeMulai || template.periodeAkhir ? `${template.periodeMulai || "—"} s.d. ${template.periodeAkhir || "—"}` : "—"],
+              ["Dasar penetapan standar", template.noSK ? `${template.noSK}${template.tanggalPenetapan ? ` tanggal ${fmtTanggal(template.tanggalPenetapan)}` : ""}` : "—"],
+              ["Ditetapkan oleh", template.pejabatPenetap || "—"],
+              ["Jumlah unit pelaksana", `${unit.filter((u) => u.id).length} unit`],
+              ["Tanggal pengiriman terakhir", fmtTanggal(tglKirim)],
+              ["Tanggal penilaian terakhir", fmtTanggal(tglNilai)],
+            ]}
+          />
+
+          <div className="serif" style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}>A. Ringkasan Capaian</div>
+          <table className="sans hindari-potong" style={{ width: "100%", borderCollapse: "collapse", marginBottom: 22 }}>
+            <tbody>
+              {[
+                ["Jumlah indikator", `${r.total} indikator (${r.total - r.kualitatif} kuantitatif, ${r.kualitatif} kualitatif)`],
+                ["Indikator terisi", `${r.terisi} dari ${r.total}`],
+                ["Memenuhi target", `${r.tercapai} indikator`],
+                ["Tidak memenuhi target", `${r.belum} indikator`],
+                ["Skor rata-rata", r.skorRata === null ? "Belum dinilai" : `${r.skorRata.toFixed(1)} dari 100 (${r.dinilai} indikator dinilai)`],
+                ["Dokumen bukti terlampir", `${r.dokumen} berkas`],
+                ["Komposisi standar", `${template.sections.filter((x) => x.sumberStandar === "sndikti").length} kriteria SN-DIKTI, ${template.sections.filter((x) => x.sumberStandar !== "sndikti").length} kriteria Standar PT (melampaui SN-DIKTI)`],
+                ["Klasifikasi temuan", temuanTally.map((k) => `${k.n} ${k.label.toLowerCase()}`).join(", ")],
+              ].map(([k, v]) => (
+                <tr key={k}>
+                  <td style={{ ...tdGaya, width: 230, background: "#FCFCFB", fontWeight: 600 }}>{k}</td>
+                  <td style={tdGaya}>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="serif" style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}>B. Pelaksanaan per Unit</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 22 }}>
+            <thead>
+              <tr>
+                <th style={thGaya}>Unit pelaksana</th>
+                <th style={{ ...thGaya, width: 200 }}>Pelapor</th>
+                <th style={{ ...thGaya, width: 70 }}>Indikator</th>
+                <th style={{ ...thGaya, width: 60 }}>Terisi</th>
+                <th style={{ ...thGaya, width: 60 }}>Dinilai</th>
+                <th style={{ ...thGaya, width: 100 }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {unit.map((u) => (
+                <tr key={u.id || "kosong"}>
+                  <td style={tdGaya}>{u.label}</td>
+                  <td style={tdGaya}>{u.submission?.filledBy || "—"}</td>
+                  <td style={{ ...tdGaya, textAlign: "center" }}>{u.total}</td>
+                  <td style={{ ...tdGaya, textAlign: "center" }}>{u.terisi}</td>
+                  <td style={{ ...tdGaya, textAlign: "center" }}>{u.dinilai}</td>
+                  <td style={tdGaya}>{LABEL_STATUS_SUB[u.status] || u.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="serif" style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}>C. Rincian per Kriteria Standar</div>
+
+          {template.sections.map((section, si) => {
+            const nomor = nomorIndikatorPerSection(section);
+            return (
+              <div key={section.id} style={{ marginBottom: 20 }}>
+                <div className="sans hindari-potong" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink)", marginBottom: 5, lineHeight: 1.45 }}>
+                  {section.kode ? `${section.kode}. ` : `${si + 1}. `}{section.title}
+                  {section.kodeDokumen && (
+                    <span style={{ fontWeight: 400, color: "var(--muted)" }}> · {section.kodeDokumen}</span>
+                  )}
+                </div>
+                {section.subsections.map((sub) => (
+                  <div key={sub.id} style={{ marginBottom: 12 }}>
+                    <div className="sans hindari-potong" style={{ fontSize: 10.5, color: "var(--muted)", fontStyle: "italic", marginBottom: 4, lineHeight: 1.45 }}>
+                      Pernyataan standar: {sub.title}
+                    </div>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ ...thGaya, width: 44 }}>No</th>
+                          <th style={thGaya}>Indikator</th>
+                          <th style={{ ...thGaya, width: 84 }}>PIC pelaksana</th>
+                          <th style={{ ...thGaya, width: 78 }}>Target ideal</th>
+                          <th style={{ ...thGaya, width: 74 }}>Realisasi</th>
+                          <th style={{ ...thGaya, width: 58 }}>Capaian</th>
+                          <th style={{ ...thGaya, width: 76 }}>Metode</th>
+                          <th style={{ ...thGaya, width: 56 }}>Temuan</th>
+                          <th style={{ ...thGaya, width: 38 }}>Skor</th>
+                          <th style={{ ...thGaya, width: 128 }}>Catatan Penjamin Mutu</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sub.fields.map((f) => {
+                          const ans = submission.answers[f.id] || {};
+                          const rev = submission.reviews[f.id] || {};
+                          const c = compareToTarget(f, ans.value);
+                          return (
+                            <tr key={f.id}>
+                              <td style={{ ...tdGaya, fontWeight: 600, whiteSpace: "nowrap" }}>{nomor[f.id]}</td>
+                              <td style={tdGaya}>{f.label}</td>
+                              <td style={tdGaya}>{namaUnit(f.unitPengisi, true)}</td>
+                              <td style={tdGaya}>{targetLabel(f)}</td>
+                              <td style={tdGaya}>
+                                {String(ans.value || "").trim() === "" ? "Tidak diisi" : ans.value}
+                                {f.type === "quantitative" && f.unit ? ` ${f.unit}` : ""}
+                              </td>
+                              <td style={{ ...tdGaya, fontWeight: 600, color: c.status === "tercapai" ? "var(--good)" : c.status === "belum" ? "var(--warn)" : "var(--muted)" }}>
+                                {c.status === "tercapai" ? "Memenuhi" : c.status === "belum" ? "Tidak memenuhi" : "Kualitatif"}
+                              </td>
+                              <td style={tdGaya}>{rev.metode ? labelMetode(rev.metode) : "—"}</td>
+                              <td style={tdGaya}>{temuanById(rev.temuan)?.label.replace("Praktik ", "") || "—"}</td>
+                              <td style={{ ...tdGaya, textAlign: "center", fontWeight: 600 }}>{rev.score === "" || rev.score === undefined ? "—" : rev.score}</td>
+                              <td style={tdGaya}>{rev.comment || "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          <div className="serif hindari-potong" style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 8, marginTop: 22 }}>
+            D. Daftar Dokumen Bukti
+          </div>
+          {r.dokumen === 0 ? (
+            <div className="sans" style={{ fontSize: 11, color: "var(--muted)" }}>Tidak ada dokumen bukti yang dilampirkan.</div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ ...thGaya, width: 36 }}>No</th>
+                  <th style={thGaya}>Indikator</th>
+                  <th style={{ ...thGaya, width: 250 }}>Nama berkas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {template.sections
+                  .flatMap((s) => s.subsections.flatMap((ss) => ss.fields))
+                  .filter((f) => submission.answers[f.id]?.doc)
+                  .map((f, i) => (
+                    <tr key={f.id}>
+                      <td style={{ ...tdGaya, textAlign: "center" }}>{i + 1}</td>
+                      <td style={tdGaya}>{f.label}</td>
+                      <td style={tdGaya}>{submission.answers[f.id].doc.fileName}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          )}
+
+          <div className="sans hindari-potong" style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 26 }}>
+            Jakarta, {fmtTanggal(tglNilai || tglKirim || new Date().toISOString())}
+          </div>
+          <BlokTandaTangan
+            kolom={[
+              { jabatan: "Auditor / Penjamin Mutu", nama: penjamin?.name },
+              { jabatan: "Kepala LPM", nama: admin?.name },
+              { jabatan: "Ketua STIKOM CKI", nama: pimpinan?.name },
+            ]}
+          />
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- RIWAYAT PENILAIAN ---------------- */
+function RiwayatPenilaian({ templates, submissions, onOpenLaporan }) {
+  const riwayat = useMemo(() => daftarRiwayat(templates, submissions), [templates, submissions]);
+  const [cari, setCari] = useState("");
+  const [buka, setBuka] = useState(null);
+
+  const tersaring = riwayat.filter((x) => labelPeriode(x.template).toLowerCase().includes(cari.toLowerCase()));
+
+  return (
+    <div>
+      <h1 className="serif" style={{ fontSize: 26, fontWeight: 700, color: "var(--ink)", margin: 0 }}>Riwayat Penilaian</h1>
+      <p className="sans" style={{ color: "var(--muted)", fontSize: 14, marginTop: 6, maxWidth: 780, lineHeight: 1.7 }}>
+        Rekam jejak per periode, terbaru di atas. Satu periode berisi laporan pelaksanaan dari beberapa unit, jadi progres
+        tiap unit ditampilkan terpisah. Laporan lengkapnya menggabungkan seluruh unit menjadi satu dokumen PDF.
+      </p>
+
+      {riwayat.length === 0 ? (
+        <Card style={{ padding: 30, marginTop: 22 }}>
+          <div className="sans" style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.7 }}>
+            Belum ada riwayat. Sebuah periode masuk ke daftar ini setelah minimal satu unit pelaksana menekan
+            <strong> Kirim untuk dinilai</strong> pada form penilaian.
+          </div>
+        </Card>
+      ) : (
+        <>
+          <div style={{ margin: "22px 0 14px" }}>
+            <TextInput placeholder="Cari fakultas, program studi, atau tahun ajaran..." value={cari} onChange={(e) => setCari(e.target.value)} />
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {tersaring.map(({ template, ringkasan, unit, tanggal, selesaiDinilai }) => {
+              const persen = ringkasan.tercapai + ringkasan.belum > 0
+                ? Math.round((ringkasan.tercapai / (ringkasan.tercapai + ringkasan.belum)) * 100)
+                : null;
+              const terbuka = buka === template.id;
+              const sudahKirim = unit.filter((u) => u.status === "submitted" || u.status === "reviewed").length;
+              return (
+                <Card key={template.id} style={{ padding: 18 }}>
+                  <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 260 }}>
+                      <div className="serif" style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", lineHeight: 1.35 }}>
+                        {labelPeriode(template)}
+                      </div>
+                      <div className="sans" style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>
+                        {template.jenjang} · penilaian terakhir {fmtTanggal(tanggal, true)}
+                        {template.noSK ? ` · SK ${template.noSK}` : ""}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                        <Badge tone={selesaiDinilai ? "good" : "warn"}>
+                          {selesaiDinilai ? "Semua unit sudah dinilai" : `${sudahKirim}/${unit.filter((u) => u.id).length} unit terkirim`}
+                        </Badge>
+                        {template.terkunci && <Badge tone="muted">Periode terkunci</Badge>}
+                        <Badge tone="good">{ringkasan.tercapai} memenuhi</Badge>
+                        <Badge tone="warn">{ringkasan.belum} tidak memenuhi</Badge>
+                        <Badge tone="muted">{ringkasan.dokumen} dokumen bukti</Badge>
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: "right", minWidth: 130 }}>
+                      <div className="sans" style={{ fontSize: 11.5, color: "var(--muted)" }}>Skor rata-rata</div>
+                      <div className="serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--ink)", lineHeight: 1.1 }}>
+                        {ringkasan.skorRata === null ? "—" : ringkasan.skorRata.toFixed(1)}
+                      </div>
+                      {persen !== null && (
+                        <div className="sans" style={{ fontSize: 11.5, color: "var(--muted)" }}>{persen}% indikator memenuhi</div>
+                      )}
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <Btn variant="outline" small icon={FileText} onClick={() => onOpenLaporan(template.id)}>Laporan lengkap</Btn>
+                      <Btn variant="ghost" small icon={terbuka ? ChevronDown : ChevronRight} onClick={() => setBuka(terbuka ? null : template.id)}>
+                        Rincian unit
+                      </Btn>
+                    </div>
+                  </div>
+
+                  {terbuka && (
+                    <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                      <table className="sans" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ ...thGaya, fontSize: 11 }}>Unit pelaksana</th>
+                            <th style={{ ...thGaya, fontSize: 11, width: 190 }}>Pelapor</th>
+                            <th style={{ ...thGaya, fontSize: 11, width: 90 }}>Terisi</th>
+                            <th style={{ ...thGaya, fontSize: 11, width: 90 }}>Dinilai</th>
+                            <th style={{ ...thGaya, fontSize: 11, width: 120 }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {unit.map((u) => (
+                            <tr key={u.id || "kosong"}>
+                              <td style={{ ...tdGaya, fontSize: 12 }}>{u.label}</td>
+                              <td style={{ ...tdGaya, fontSize: 12 }}>{u.submission?.filledBy || "—"}</td>
+                              <td style={{ ...tdGaya, fontSize: 12, textAlign: "center" }}>{u.terisi}/{u.total}</td>
+                              <td style={{ ...tdGaya, fontSize: 12, textAlign: "center" }}>{u.dinilai}/{u.total}</td>
+                              <td style={{ ...tdGaya, fontSize: 12 }}>{LABEL_STATUS_SUB[u.status] || u.status}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+            {tersaring.length === 0 && (
+              <Card style={{ padding: 20 }}>
+                <div className="sans" style={{ fontSize: 13, color: "var(--muted)" }}>Tidak ada periode yang cocok dengan pencarian.</div>
+              </Card>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- LAPORAN RENCANA TINDAK LANJUT (RTL) ---------------- */
+function LaporanRtl({ templates, submissions, rtlStore, users }) {
+  // Periode yang punya hasil penilaian, termasuk yang sudah dikunci RTM
+  const kandidat = templates.filter((t) => submissions.some((s) => s.templateId === t.id && s.status === "reviewed"));
+  const [pilih, setPilih] = useState(kandidat[0]?.id || "");
+  const template = templates.find((t) => t.id === pilih);
+  const saved = template ? rtlStore[template.id] : null;
+
+  const rows = useMemo(() => {
+    if (!template) return [];
+    return mergeRtlRows(buildRtlRows(template, submissions), saved?.rows);
+  }, [template, submissions, saved]);
+
+  // RTL hanya memuat indikator yang tidak memenuhi target
+  const rtl = rows.filter((r) => r.capaian === "belum");
+  const lengkap = rtl.filter((r) => rtlRowSiap(r)).length;
+  const admin = users.find((u) => u.role === "admin");
+  const disetujui = saved?.status === "disetujui";
+
+  if (kandidat.length === 0) {
+    return (
+      <div>
+        <h1 className="serif" style={{ fontSize: 26, fontWeight: 700, color: "var(--ink)", margin: 0 }}>Rencana Tindak Lanjut (RTL)</h1>
+        <Card style={{ padding: 30, marginTop: 22 }}>
+          <div className="sans" style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.7 }}>
+            Belum ada periode yang selesai dinilai, sehingga belum ada indikator yang bisa masuk RTL.
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="tanpa-cetak">
+        <h1 className="serif" style={{ fontSize: 26, fontWeight: 700, color: "var(--ink)", margin: 0 }}>Rencana Tindak Lanjut (RTL)</h1>
+        <p className="sans" style={{ color: "var(--muted)", fontSize: 14, marginTop: 6, maxWidth: 780, lineHeight: 1.7 }}>
+          Daftar indikator yang <strong>tidak memenuhi target</strong> beserta akar masalah, rencana tindak lanjut, penanggung
+          jawab, dan tenggatnya. Isinya diambil dari keputusan RTM — untuk mengubahnya, buka menu
+          <strong> Tindak Lanjut &amp; RTM</strong>.
+        </p>
+
+        <Card style={{ padding: 18, margin: "20px 0" }}>
+          <Field label="Periode">
+            <Select value={pilih} onChange={(e) => setPilih(e.target.value)}>
+              {kandidat.map((t) => (
+                <option key={t.id} value={t.id}>{labelPeriode(t)}</option>
+              ))}
+            </Select>
+          </Field>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <Badge tone="warn">{rtl.length} indikator tidak memenuhi</Badge>
+            <Badge tone={lengkap === rtl.length ? "good" : "muted"}>{lengkap} RTL lengkap</Badge>
+            <Badge tone={disetujui ? "good" : "muted"}>{disetujui ? "Sudah disetujui RTM" : "Belum disetujui RTM"}</Badge>
+          </div>
+          {lengkap < rtl.length && (
+            <div className="sans" style={{ fontSize: 12.5, color: "var(--warn)", marginTop: 12, lineHeight: 1.6 }}>
+              {rtl.length - lengkap} indikator belum memiliki RTL lengkap. Lengkapi akar masalah, rencana tindak lanjut,
+              penanggung jawab, dan tenggat di menu Tindak Lanjut &amp; RTM sebelum laporan ini dicetak.
+            </div>
+          )}
+          <div style={{ marginTop: 14 }}>
+            <Btn variant="gold" icon={Printer} onClick={() => window.print()}>Cetak / simpan sebagai PDF</Btn>
+          </div>
+        </Card>
+      </div>
+
+      <div className="area-cetak">
+        <Card className="lembar-cetak" style={{ padding: 34, maxWidth: 900 }}>
+          <KopLaporan
+            judul="RENCANA TINDAK LANJUT (RTL) HASIL PENILAIAN MUTU INTERNAL"
+            template={template}
+            keterangan="Disusun atas indikator yang tidak memenuhi target, sebagai bagian tahap Pengendalian dan Peningkatan siklus PPEPP"
+          />
+
+          <BarisIdentitas
+            isi={[
+              ["Fakultas", template.fakultas || "—"],
+              ["Program studi", template.prodi || "—"],
+              ["Tahun ajaran / periode", template.tahunAjaran || "—"],
+              ["Jumlah indikator tidak memenuhi", `${rtl.length} indikator`],
+              ["Kelengkapan RTL", `${lengkap} dari ${rtl.length} indikator`],
+              ["Status keputusan RTM", disetujui ? `Disetujui ${fmtTanggal(saved?.disetujuiPada)}` : "Belum disetujui"],
+              ["Target periode berikutnya", saved?.tahunAjaranBaru || "—"],
+              ["Progres pelaksanaan", STATUS_TL.map((x) => `${rtl.filter((r) => (r.statusTindakLanjut || "belum") === x.id).length} ${x.label.toLowerCase()}`).join(", ")],
+            ]}
+          />
+
+          {rtl.length === 0 ? (
+            <div className="sans" style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.7 }}>
+              Seluruh indikator pada periode ini memenuhi target, sehingga tidak ada rencana tindak lanjut yang perlu disusun.
+            </div>
+          ) : (
+            rtl.map((r, i) => (
+              <div key={r.fieldId} className="hindari-potong" style={{ border: "1px solid var(--border)", borderLeft: "3px solid var(--warn)", borderRadius: 6, padding: 14, marginBottom: 12 }}>
+                <div className="sans" style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 2 }}>
+                  {r.kriteria}{r.kodeDokumen ? ` · ${r.kodeDokumen}` : ""}
+                </div>
+                <div className="sans" style={{ fontSize: 10.5, color: "var(--muted)", fontStyle: "italic", marginBottom: 6, lineHeight: 1.45 }}>
+                  Pernyataan standar: {r.pernyataan}
+                </div>
+                <div className="sans" style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)", marginBottom: 8, lineHeight: 1.5 }}>
+                  {i + 1}. [{r.nomor}] {r.label}
+                </div>
+
+                <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ ...tdGaya, width: 150, background: "#FCFCFB", fontWeight: 600 }}>Target ideal</td>
+                      <td style={{ ...tdGaya, width: 150 }}>
+                        {r.arah === "penuh" ? "" : r.arah === "maks" ? "≤ " : "≥ "}{r.targetLama}{r.unit ? ` ${r.unit}` : ""}
+                      </td>
+                      <td style={{ ...tdGaya, width: 110, background: "#FCFCFB", fontWeight: 600 }}>Realisasi</td>
+                      <td style={tdGaya}>{r.realisasi === null ? "—" : r.realisasi}{r.unit ? ` ${r.unit}` : ""}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ ...tdGaya, background: "#FCFCFB", fontWeight: 600 }}>Akar masalah</td>
+                      <td style={tdGaya} colSpan={3}>{r.akarMasalah || "— belum diisi —"}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ ...tdGaya, background: "#FCFCFB", fontWeight: 600 }}>Rencana tindak lanjut</td>
+                      <td style={tdGaya} colSpan={3}>{r.rencanaTindakLanjut || "— belum diisi —"}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ ...tdGaya, background: "#FCFCFB", fontWeight: 600 }}>Keputusan RTM</td>
+                      <td style={tdGaya} colSpan={3}>
+                        {KEPUTUSAN_LABEL[r.keputusan] || "—"}
+                        {r.keputusan === "perketat" && r.targetBaru ? ` — ambang batas baru: ${r.targetBaru}${r.unit ? ` ${r.unit}` : ""}` : ""}
+                        {r.keputusan === "indikator_baru" && r.indikatorBaruLabel ? ` — indikator baru: ${r.indikatorBaruLabel}` : ""}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style={{ ...tdGaya, background: "#FCFCFB", fontWeight: 600 }}>Unit pelaksana</td>
+                      <td style={tdGaya}>{namaUnit(r.unitPengisi, true)}</td>
+                      <td style={{ ...tdGaya, background: "#FCFCFB", fontWeight: 600 }}>Penanggung jawab</td>
+                      <td style={tdGaya}>{r.penanggungJawab || "— belum ditunjuk —"}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ ...tdGaya, background: "#FCFCFB", fontWeight: 600 }}>Tenggat</td>
+                      <td style={tdGaya}>{r.tenggat ? fmtTanggal(r.tenggat) : "— belum ditetapkan —"}</td>
+                      <td style={{ ...tdGaya, background: "#FCFCFB", fontWeight: 600 }}>Status pelaksanaan</td>
+                      <td style={tdGaya}>
+                        {statusTlById(r.statusTindakLanjut || "belum").label}
+                        {r.catatanProgres ? ` — ${r.catatanProgres}` : ""}
+                        {r.progresPada ? ` (diperbarui ${fmtTanggal(r.progresPada)})` : ""}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ))
+          )}
+
+          <div className="sans hindari-potong" style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 26 }}>
+            Jakarta, {fmtTanggal(saved?.disetujuiPada || new Date().toISOString())}
+          </div>
+          <BlokTandaTangan
+            kolom={[
+              { jabatan: "Disusun oleh — Kepala LPM", nama: admin?.name },
+              { jabatan: "Disetujui oleh — Ketua STIKOM CKI", nama: "" },
+            ]}
+          />
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- ADMIN: LAYAR TINDAK LANJUT & RTM ---------------- */
-function RtmWorkspace({ templates, submissions, rtlStore, onSaveRtl, onApply }) {
+function RtmWorkspace({ templates, submissions, users, rtlStore, onSaveRtl, onApply, bolehMenerapkan }) {
   // Periode yang layak dibawa ke RTM: sudah ada penilaian selesai & belum dikunci
   const siapRtm = templates.filter(
     (t) => !t.terkunci && submissions.some((s) => s.templateId === t.id && s.status === "reviewed")
@@ -2772,7 +3733,8 @@ function RtmWorkspace({ templates, submissions, rtlStore, onSaveRtl, onApply }) 
                   (k.untuk === "semua" || k.untuk === r.capaian || k.id === r.keputusan) &&
                   !(k.id === "perketat" && r.diPlafon && r.keputusan !== "perketat")
               );
-              const siap = rtlRowSiap(r);
+              const kurang = kekuranganRtl(r);
+              const siap = kurang.length === 0;
               return (
                 <Card key={r.fieldId} style={{ padding: 16, borderLeft: `3px solid ${siap ? "var(--border)" : "var(--warn)"}` }}>
                   <div className="sans" style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 2 }}>
@@ -2786,6 +3748,9 @@ function RtmWorkspace({ templates, submissions, rtlStore, onSaveRtl, onApply }) 
                     <div className="sans" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)", lineHeight: 1.5, paddingTop: 2 }}>
                       {r.label || "Indikator tanpa nama"}
                     </div>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <Badge tone="muted">Unit pelaksana: {namaUnit(r.unitPengisi, true)}</Badge>
                   </div>
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
@@ -2813,7 +3778,21 @@ function RtmWorkspace({ templates, submissions, rtlStore, onSaveRtl, onApply }) 
                       />
                     </Field>
                     <Field label="Penanggung jawab">
-                      <TextInput placeholder="mis. Ka. LPPM" value={r.penanggungJawab} onChange={(e) => patchRow(r.fieldId, { penanggungJawab: e.target.value })} style={{ fontSize: 13 }} />
+                      <Select
+                        value={r.penanggungJawabId || ""}
+                        onChange={(e) => {
+                          const u = users.find((x) => x.id === e.target.value);
+                          patchRow(r.fieldId, { penanggungJawabId: e.target.value, penanggungJawab: u ? u.name : "" });
+                        }}
+                        style={{ fontSize: 13 }}
+                      >
+                        <option value="">— pilih pengguna —</option>
+                        {users.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name} ({ROLE_OPTIONS.find((ro) => ro.id === u.role)?.label || u.role})
+                          </option>
+                        ))}
+                      </Select>
                     </Field>
                     <Field label="Tenggat">
                       <TextInput type="date" value={r.tenggat} onChange={(e) => patchRow(r.fieldId, { tenggat: e.target.value })} style={{ fontSize: 13 }} />
@@ -2832,25 +3811,33 @@ function RtmWorkspace({ templates, submissions, rtlStore, onSaveRtl, onApply }) 
                     </Field>
                   )}
 
-                  <Field
-                    label={r.capaian === "belum" ? "Akar masalah (wajib untuk indikator belum tercapai)" : "Catatan / pertimbangan RTM"}
-                  >
-                    <TextArea
-                      placeholder={r.capaian === "belum" ? "Mengapa target belum tercapai?" : "Opsional"}
-                      value={r.akarMasalah}
-                      onChange={(e) => patchRow(r.fieldId, { akarMasalah: e.target.value })}
-                      style={{ minHeight: 56, fontSize: 13 }}
-                    />
-                  </Field>
+                  <div style={{ display: "grid", gridTemplateColumns: r.capaian === "belum" ? "1fr 1fr" : "1fr", gap: 12 }}>
+                    <Field
+                      label={r.capaian === "belum" ? "Akar masalah (wajib)" : "Catatan / pertimbangan RTM"}
+                    >
+                      <TextArea
+                        placeholder={r.capaian === "belum" ? "Mengapa target belum tercapai?" : "Opsional"}
+                        value={r.akarMasalah}
+                        onChange={(e) => patchRow(r.fieldId, { akarMasalah: e.target.value })}
+                        style={{ minHeight: 62, fontSize: 13 }}
+                      />
+                    </Field>
+                    {r.capaian === "belum" && (
+                      <Field label="Rencana tindak lanjut (wajib)" hint="Tindakan konkret yang akan dijalankan pada periode berikutnya.">
+                        <TextArea
+                          placeholder="mis. Membuka rekrutmen 3 dosen tetap pada semester ganjil dan mengajukan anggaran ke yayasan"
+                          value={r.rencanaTindakLanjut || ""}
+                          onChange={(e) => patchRow(r.fieldId, { rencanaTindakLanjut: e.target.value })}
+                          style={{ minHeight: 62, fontSize: 13 }}
+                        />
+                      </Field>
+                    )}
+                  </div>
 
-                  {!siap && (
-                    <div className="sans" style={{ fontSize: 12, color: "var(--warn)", display: "flex", alignItems: "center", gap: 6 }}>
-                      <AlertTriangle size={13} />
-                      {r.keputusan === "indikator_baru" && !r.indikatorBaruLabel.trim()
-                        ? "Nama indikator baru belum diisi."
-                        : r.keputusan === "perketat" && String(r.targetBaru).trim() === ""
-                        ? "Ambang batas baru belum diisi."
-                        : "Akar masalah belum diisi."}
+                  {kurang.length > 0 && (
+                    <div className="sans" style={{ fontSize: 12, color: "var(--warn)", display: "flex", alignItems: "flex-start", gap: 6, lineHeight: 1.5 }}>
+                      <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 2 }} />
+                      <span>Belum diisi: {kurang.join(", ")}.</span>
                     </div>
                   )}
                 </Card>
@@ -2873,12 +3860,26 @@ function RtmWorkspace({ templates, submissions, rtlStore, onSaveRtl, onApply }) 
                 Belum bisa diterapkan karena:
                 <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
                   {kurangTahun && <li>Tahun ajaran periode berikutnya belum diisi.</li>}
-                  {rowBelumSiap.length > 0 && <li>{rowBelumSiap.length} indikator masih perlu dilengkapi (ditandai garis kuning di atas).</li>}
+                  {rowBelumSiap.length > 0 && (
+                    <li>
+                      {rowBelumSiap.length} indikator masih perlu dilengkapi — gunakan saringan
+                      <strong> Perlu dilengkapi</strong> di atas untuk melihatnya.
+                    </li>
+                  )}
                 </ul>
               </div>
             )}
 
-            {!konfirmasi ? (
+            {!bolehMenerapkan ? (
+              <div className="sans" style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.7, borderLeft: "3px solid var(--gold)", paddingLeft: 12 }}>
+                Keputusan di atas disiapkan Admin Mutu, tetapi <strong>penerapannya kewenangan Pimpinan</strong> — sesuai tahap
+                Peningkatan pada siklus PPEPP yang dilakukan oleh otoritas yang berwenang. Masuk sebagai Pimpinan untuk
+                menyetujui dan membuat template periode berikutnya.
+                {bisaTerapkan
+                  ? " Seluruh keputusan sudah lengkap dan siap disetujui."
+                  : " Lengkapi dulu keputusan yang masih kurang di atas."}
+              </div>
+            ) : !konfirmasi ? (
               <Btn variant="gold" icon={TrendingUp} disabled={!bisaTerapkan} onClick={() => setKonfirmasi(true)}>
                 Setujui RTM &amp; buat template periode berikutnya
               </Btn>
@@ -2924,6 +3925,126 @@ function RtmWorkspace({ templates, submissions, rtlStore, onSaveRtl, onApply }) 
   );
 }
 
+/* ---------------- UNIT: TINDAK LANJUT SAYA ----------------
+   Menutup loop tahap Pengendalian pada siklus CQI: hasil SPMI/AMI dikembalikan
+   ke unit pelaksana, dan unit melaporkan progres penanganannya. RTL baru
+   terlihat di sini setelah keputusan RTM disetujui Pimpinan. */
+function TindakLanjutUnit({ templates, submissions, rtlStore, currentUser, onSaveRtl }) {
+  const unit = currentUser?.unit || "";
+
+  // Kumpulkan RTL dari semua periode yang keputusan RTM-nya sudah disetujui
+  const tugas = useMemo(() => {
+    const hasil = [];
+    templates.forEach((t) => {
+      const saved = rtlStore[t.id];
+      if (!saved || saved.status !== "disetujui") return;
+      const rows = mergeRtlRows(buildRtlRows(t, submissions), saved.rows);
+      rows
+        .filter((r) => r.capaian === "belum" && r.unitPengisi === unit)
+        .forEach((r) => hasil.push({ template: t, row: r }));
+    });
+    return hasil;
+  }, [templates, submissions, rtlStore, unit]);
+
+  const patch = (templateId, fieldId, isi) => {
+    const t = templates.find((x) => x.id === templateId);
+    const saved = rtlStore[templateId];
+    if (!t || !saved) return;
+    const rows = mergeRtlRows(buildRtlRows(t, submissions), saved.rows).map((r) =>
+      r.fieldId === fieldId
+        ? { ...r, ...isi, progresOleh: currentUser?.name || "", progresPada: new Date().toISOString() }
+        : r
+    );
+    onSaveRtl(templateId, { ...saved, rows });
+  };
+
+  const hitung = STATUS_TL.map((st) => ({ ...st, n: tugas.filter((x) => (x.row.statusTindakLanjut || "belum") === st.id).length }));
+
+  return (
+    <div>
+      <h1 className="serif" style={{ fontSize: 26, fontWeight: 700, color: "var(--ink)", margin: 0 }}>Tindak Lanjut Saya</h1>
+      <p className="sans" style={{ color: "var(--muted)", fontSize: 14, marginTop: 6, maxWidth: 780, lineHeight: 1.7 }}>
+        Unit <strong>{namaUnit(unit)}</strong>. Berisi indikator milik unit Anda yang tidak memenuhi target pada periode lalu,
+        beserta rencana tindak lanjut yang sudah disetujui RTM. Perbarui statusnya di sini agar pelaksanaannya terpantau.
+      </p>
+
+      {tugas.length === 0 ? (
+        <Card style={{ padding: 30, marginTop: 22 }}>
+          <div className="sans" style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.7 }}>
+            Belum ada tindak lanjut untuk unit Anda. Daftar ini terisi setelah Pimpinan menyetujui keputusan RTM atas periode
+            yang sudah dinilai, dan ada indikator milik unit Anda yang tidak memenuhi target.
+          </div>
+        </Card>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "20px 0 14px" }}>
+            {hitung.map((st) => (
+              <Badge key={st.id} tone={st.n ? st.tone : "muted"}>{st.n} {st.label.toLowerCase()}</Badge>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {tugas.map(({ template, row }) => {
+              const st = statusTlById(row.statusTindakLanjut || "belum");
+              return (
+                <Card key={`${template.id}-${row.fieldId}`} style={{ padding: 18, borderLeft: `3px solid var(--${st.tone === "good" ? "good" : st.tone === "warn" ? "warn" : "border"})` }}>
+                  <div className="sans" style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 2 }}>
+                    {labelPeriode(template)} · {row.kriteria}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 8 }}>
+                    <Badge tone={row.jenis === "IKT" ? "muted" : "default"}>{row.nomor}</Badge>
+                    <div className="sans" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)", lineHeight: 1.5, paddingTop: 2 }}>
+                      {row.label}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+                    <span className="sans" style={{ fontSize: 12.5, color: "var(--muted)" }}>
+                      Target {row.arah === "penuh" ? "" : row.arah === "maks" ? "≤ " : "≥ "}
+                      <strong style={{ color: "var(--ink)" }}>{row.targetLama}</strong>{row.unit ? ` ${row.unit}` : ""} ·
+                      Realisasi <strong style={{ color: "var(--ink)" }}>{row.realisasi === null ? "—" : row.realisasi}</strong>
+                    </span>
+                    <Badge tone="muted">PJ: {row.penanggungJawab || "belum ditunjuk"}</Badge>
+                    <Badge tone="muted">Tenggat {row.tenggat ? fmtTanggal(row.tenggat) : "—"}</Badge>
+                    <Badge tone={st.tone}>{st.label}</Badge>
+                  </div>
+
+                  <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, background: "#FCFCFB", marginBottom: 12 }}>
+                    <div className="sans" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)", marginBottom: 3 }}>AKAR MASALAH</div>
+                    <div className="sans" style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.55, marginBottom: 10 }}>{row.akarMasalah || "—"}</div>
+                    <div className="sans" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--good)", marginBottom: 3 }}>RENCANA TINDAK LANJUT</div>
+                    <div className="sans" style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1.55 }}>{row.rencanaTindakLanjut || "—"}</div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 12 }}>
+                    <Field label="Status pelaksanaan">
+                      <Select
+                        value={row.statusTindakLanjut || "belum"}
+                        onChange={(e) => patch(template.id, row.fieldId, { statusTindakLanjut: e.target.value })}
+                        style={{ fontSize: 13 }}
+                      >
+                        {STATUS_TL.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="Catatan progres" hint={row.progresPada ? `Diperbarui ${row.progresOleh || "—"} pada ${fmtTanggal(row.progresPada, true)}` : "Belum pernah diperbarui."}>
+                      <TextArea
+                        placeholder="Apa yang sudah dikerjakan, apa kendalanya, apa langkah berikutnya..."
+                        value={row.catatanProgres || ""}
+                        onChange={(e) => patch(template.id, row.fieldId, { catatanProgres: e.target.value })}
+                        style={{ minHeight: 62, fontSize: 13 }}
+                      />
+                    </Field>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ---------------- PENGISI: LIST TEMPLATE AKTIF ---------------- */
 function PengisiList({ templates, submissions, onOpen, currentUser }) {
   const published = templates.filter((t) => t.status === "published");
@@ -2933,7 +4054,8 @@ function PengisiList({ templates, submissions, onOpen, currentUser }) {
         Form penilaian mutu
       </h1>
       <p className="sans" style={{ color: "var(--muted)", fontSize: 14, marginTop: 6, marginBottom: 22 }}>
-        Masuk sebagai <strong>{currentUser?.name}</strong>. Pilih template yang sesuai, lalu lengkapi setiap kriteria beserta dokumen pendukung.
+        Masuk sebagai <strong>{currentUser?.name}</strong> — unit <strong>{namaUnit(currentUser?.unit)}</strong>. Setiap
+        periode hanya menampilkan indikator yang PIC pelaksananya unit Anda.
       </p>
 
       {published.length === 0 && (
@@ -2944,8 +4066,12 @@ function PengisiList({ templates, submissions, onOpen, currentUser }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
         {published.map((t) => {
-          const mine = submissions.filter((s) => s.templateId === t.id && s.filledByEmail === currentUser?.email);
+          const mine = submissions.filter((s) => s.templateId === t.id && s.unit === (currentUser?.unit || ""));
           const mineStatus = mine[0]?.status;
+          const milik = indikatorUnit(t, currentUser?.unit || "");
+          const terisi = mine[0]
+            ? milik.filter((f) => mine[0].answers[f.id] && String(mine[0].answers[f.id].value || "").trim() !== "").length
+            : 0;
           return (
             <Card key={t.id} style={{ padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
               <div className="serif" style={{ fontSize: 17, fontWeight: 700, color: "var(--ink)", lineHeight: 1.35 }}>
@@ -2957,13 +4083,16 @@ function PengisiList({ templates, submissions, onOpen, currentUser }) {
                   <><br />Periode: {t.periodeMulai || "?"} – {t.periodeAkhir || "?"}</>
                 )}
               </div>
-              {mineStatus && (
-                <Badge tone={mineStatus === "submitted" ? "good" : mineStatus === "reviewed" ? "good" : "muted"}>
-                  {mineStatus === "draft_fill" ? "Draf tersimpan" : mineStatus === "submitted" ? "Terkirim" : "Sudah dinilai"}
-                </Badge>
-              )}
-              <Btn variant="gold" small icon={FileText} onClick={() => onOpen(t.id)}>
-                {mine.length ? "Buka form" : "Isi form"}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <Badge tone={milik.length ? "default" : "muted"}>{milik.length} indikator unit Anda</Badge>
+                {mineStatus && (
+                  <Badge tone={mineStatus === "draft_fill" ? "muted" : "good"}>
+                    {LABEL_STATUS_SUB[mineStatus]}{mineStatus === "draft_fill" ? ` ${terisi}/${milik.length}` : ""}
+                  </Badge>
+                )}
+              </div>
+              <Btn variant="gold" small icon={FileText} disabled={milik.length === 0} onClick={() => onOpen(t.id)}>
+                {milik.length === 0 ? "Tidak ada indikator" : mine.length ? "Buka form" : "Isi form"}
               </Btn>
             </Card>
           );
@@ -3052,8 +4181,15 @@ function FormFill({ template, submission, onChangeSubmission, onBack, onSubmit, 
     onChangeSubmission({ ...submission, answers });
   };
 
-  const totalFields = template.sections.reduce((a, s) => a + s.subsections.reduce((b, ss) => b + ss.fields.length, 0), 0);
-  const filled = Object.values(submission.answers).filter((a) => a && a.value && String(a.value).trim() !== "").length;
+  // Form hanya memuat indikator yang PIC pelaksananya adalah unit ini
+  const unit = submission.unit || "";
+  const milikUnit = indikatorUnit(template, unit);
+  const idMilikUnit = new Set(milikUnit.map((f) => f.id));
+  const totalFields = milikUnit.length;
+  const filled = milikUnit.filter((f) => {
+    const a = submission.answers[f.id];
+    return a && a.value && String(a.value).trim() !== "";
+  }).length;
   // Terkunci setelah dikirim atau setelah dinilai. Yang "submitted" masih bisa
   // dibuka kembali oleh pengisi untuk diperbaiki; yang "reviewed" tidak.
   const locked = submission.status === "submitted" || submission.status === "reviewed";
@@ -3081,19 +4217,45 @@ function FormFill({ template, submission, onChangeSubmission, onBack, onSubmit, 
             ? "Sudah dinilai — terkunci"
             : submission.status === "submitted"
             ? "Terkirim — menunggu penilaian"
-            : `${filled}/${totalFields} kriteria terisi`}
+            : `${filled}/${totalFields} indikator terisi`}
         </Badge>
       </div>
 
       <Card style={{ padding: 20, margin: "18px 0" }}>
-        <div className="sans" style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", marginBottom: 6 }}>Diisi oleh</div>
-        <div className="sans" style={{ fontSize: 14, color: "var(--ink)" }}>{submission.filledBy}</div>
-        <div className="sans" style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>{submission.filledByEmail}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+          <div>
+            <div className="sans" style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", marginBottom: 6 }}>Unit pelaksana</div>
+            <div className="sans" style={{ fontSize: 14, color: "var(--ink)" }}>{namaUnit(unit)}</div>
+            <div className="sans" style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>
+              {totalFields} indikator menjadi tanggung jawab unit ini
+            </div>
+          </div>
+          <div>
+            <div className="sans" style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", marginBottom: 6 }}>Diisi oleh</div>
+            <div className="sans" style={{ fontSize: 14, color: "var(--ink)" }}>{submission.filledBy}</div>
+            <div className="sans" style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>{submission.filledByEmail}</div>
+          </div>
+        </div>
+        <div className="sans" style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 14, lineHeight: 1.6, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+          Form ini hanya memuat indikator yang PIC pelaksananya unit Anda. Indikator milik unit lain diisi oleh unit
+          masing-masing pada periode yang sama.
+        </div>
       </Card>
+
+      {totalFields === 0 && (
+        <Card style={{ padding: 30 }}>
+          <div className="sans" style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.7 }}>
+            Tidak ada indikator yang ditetapkan untuk unit <strong>{namaUnit(unit)}</strong> pada periode ini. Hubungi Admin
+            Mutu bila seharusnya ada indikator yang menjadi tanggung jawab unit Anda.
+          </div>
+        </Card>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {template.sections.map((section, si) => {
           const nomorSection = nomorIndikatorPerSection(section);
+          const adaMilikUnit = section.subsections.some((ss) => ss.fields.some((f) => idMilikUnit.has(f.id)));
+          if (!adaMilikUnit) return null;
           return (
           <Card key={section.id} style={{ padding: 22 }}>
             <div style={{ marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 10 }}>
@@ -3105,7 +4267,7 @@ function FormFill({ template, submission, onChangeSubmission, onBack, onSubmit, 
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-              {section.subsections.map((sub) => (
+              {section.subsections.filter((ss) => ss.fields.some((f) => idMilikUnit.has(f.id))).map((sub) => (
                 <div key={sub.id}>
                   <div className="sans" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, color: "var(--muted)", marginBottom: 3 }}>
                     PERNYATAAN STANDAR
@@ -3114,7 +4276,7 @@ function FormFill({ template, submission, onChangeSubmission, onBack, onSubmit, 
                     {sub.title}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingLeft: 4 }}>
-                    {sub.fields.map((f) => {
+                    {sub.fields.filter((f) => idMilikUnit.has(f.id)).map((f) => {
                       const ans = submission.answers[f.id] || {};
                       const disabled = locked;
                       const cmp = compareToTarget(f, ans.value);
@@ -3209,7 +4371,7 @@ function ReviewList({ templates, submissions, onOpen }) {
         Penilaian penjamin mutu
       </h1>
       <p className="sans" style={{ color: "var(--muted)", fontSize: 14, marginTop: 6, marginBottom: 22 }}>
-        Tinjau isian dari tiap fakultas / prodi, beri skor dan komentar per kriteria.
+        Tinjau isian yang dikirim tiap unit pelaksana, lalu beri skor, metode pengukuran, dan klasifikasi temuan per indikator.
       </p>
 
       {items.length === 0 && (
@@ -3222,8 +4384,9 @@ function ReviewList({ templates, submissions, onOpen }) {
         {items.map((s) => {
           const t = templates.find((tt) => tt.id === s.templateId);
           if (!t) return null;
-          const totalFields = t.sections.reduce((a, sec) => a + sec.subsections.reduce((b, ss) => b + ss.fields.length, 0), 0);
-          const scored = Object.values(s.reviews || {}).filter((r) => r.score !== undefined && r.score !== "").length;
+          const milik = indikatorUnit(t, s.unit || "");
+          const totalFields = milik.length;
+          const scored = milik.filter((f) => s.reviews?.[f.id] && s.reviews[f.id].score !== "" && s.reviews[f.id].score !== undefined).length;
           return (
             <Card key={s.id} style={{ padding: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
@@ -3231,7 +4394,11 @@ function ReviewList({ templates, submissions, onOpen }) {
                   {t.fakultas ? `${t.fakultas} — ` : ""}{t.prodi}
                 </div>
                 <div className="sans" style={{ fontSize: 13, color: "var(--muted)", marginTop: 3 }}>
-                  {t.fakultas} · {t.jenjang} · {t.tahunAjaran} — diisi oleh {s.filledBy || "tanpa nama"}
+                  {t.jenjang} · {t.tahunAjaran}
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                  <Badge tone="default">{namaUnit(s.unit, true)}</Badge>
+                  <Badge tone="muted">diisi oleh {s.filledBy || "tanpa nama"}</Badge>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -3280,9 +4447,25 @@ function ReviewDetail({ template, submission, onChangeSubmission, onBack, onFini
         </Card>
       </div>
 
+      <Card style={{ padding: 16, marginBottom: 14 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <Badge tone="default">{namaUnit(submission.unit, true)}</Badge>
+          <Badge tone="muted">{milikUnit.length} indikator unit ini</Badge>
+          {temuanTally.map((k) => (
+            <Badge key={k.id} tone={k.n ? k.tone : "muted"}>{k.n} {k.label.toLowerCase()}</Badge>
+          ))}
+        </div>
+        <div className="sans" style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 10, lineHeight: 1.6 }}>
+          Selain skor, lengkapi <strong>metode pengukuran</strong> dan <strong>klasifikasi temuan</strong> tiap indikator.
+          Klasifikasi baik/buruk/baru inilah yang nanti dikendalikan unit pelaksana pada tahap Pengendalian.
+        </div>
+      </Card>
+
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {template.sections.map((section, si) => {
           const nomorSection = nomorIndikatorPerSection(section);
+          const adaMilikUnit = section.subsections.some((ss) => ss.fields.some((f) => idMilikUnit.has(f.id)));
+          if (!adaMilikUnit) return null;
           return (
           <Card key={section.id} style={{ padding: 22 }}>
             <div style={{ marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 10 }}>
@@ -3293,12 +4476,12 @@ function ReviewDetail({ template, submission, onChangeSubmission, onBack, onFini
                 {section.kode ? `${section.kode}. ` : `${si + 1}. `}{section.title}
               </div>
             </div>
-            {section.subsections.map((sub) => (
+            {section.subsections.filter((ss) => ss.fields.some((f) => idMilikUnit.has(f.id))).map((sub) => (
               <div key={sub.id} style={{ marginBottom: 18 }}>
                 <div className="sans" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, color: "var(--muted)", marginBottom: 3 }}>PERNYATAAN STANDAR</div>
                 <div className="sans" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gold)", marginBottom: 10, lineHeight: 1.55 }}>{sub.title}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                  {sub.fields.map((f) => {
+                  {sub.fields.filter((f) => idMilikUnit.has(f.id)).map((f) => {
                     const ans = submission.answers[f.id] || {};
                     const rev = submission.reviews[f.id] || {};
                     return (
@@ -3343,6 +4526,20 @@ function ReviewDetail({ template, submission, onChangeSubmission, onBack, onFini
                             </div>
                             <span className="sans" style={{ fontSize: 12, color: "var(--muted)", alignSelf: "center" }}>/ 100</span>
                           </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                            <Field label="Metode pengukuran">
+                              <Select value={rev.metode || ""} onChange={(e) => setReview(f.id, { metode: e.target.value })} style={{ fontSize: 13 }}>
+                                <option value="">— pilih metode —</option>
+                                {METODE_UKUR.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                              </Select>
+                            </Field>
+                            <Field label="Klasifikasi temuan">
+                              <Select value={rev.temuan || ""} onChange={(e) => setReview(f.id, { temuan: e.target.value })} style={{ fontSize: 13 }}>
+                                <option value="">— belum diklasifikasi —</option>
+                                {KLASIFIKASI_TEMUAN.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+                              </Select>
+                            </Field>
+                          </div>
                           <TextArea placeholder="Komentar penjamin mutu..." value={rev.comment || ""} onChange={(e) => setReview(f.id, { comment: e.target.value })} style={{ minHeight: 60, fontSize: 13 }} />
                         </div>
                       </div>
@@ -3378,6 +4575,7 @@ export default function App() {
   const [draftTemplate, setDraftTemplate] = useState(null);
   const [draftSubmission, setDraftSubmission] = useState(null);
   const [savedAt, setSavedAt] = useState(null); // waktu autosave terakhir
+  const [laporanTemplateId, setLaporanTemplateId] = useState(null);
 
   const currentUser = users.find((u) => u.id === currentUserId) || users[0] || null;
 
@@ -3425,22 +4623,25 @@ export default function App() {
 
   // ---- Form (Pengisi) ----
   const openForm = (templateId) => {
-    let sub = submissions.find(
-      (s) => s.templateId === templateId && s.filledByEmail === currentUser?.email && s.status !== "reviewed"
-    );
-    if (!sub) {
-      sub = submissions.find((s) => s.templateId === templateId && s.filledByEmail === currentUser?.email);
-    }
+    // Satu submission per (periode, unit kerja) — bukan per orang, supaya
+    // pergantian pejabat tidak memecah isian unit yang sama.
+    const unit = currentUser?.unit || "";
+    let sub = submissions.find((s) => s.templateId === templateId && s.unit === unit);
     if (!sub) {
       sub = {
         id: uid(),
         templateId,
+        unit,
         filledBy: currentUser?.name || "",
         filledByEmail: currentUser?.email || "",
         status: "draft_fill",
+        dibuatPada: new Date().toISOString(),
         answers: {},
         reviews: {},
       };
+    } else {
+      // Nama pengisi terakhir diperbarui, unitnya tetap
+      sub = { ...sub, filledBy: currentUser?.name || sub.filledBy, filledByEmail: currentUser?.email || sub.filledByEmail };
     }
     setDraftSubmission(JSON.parse(JSON.stringify(sub)));
     setView("edit");
@@ -3453,11 +4654,17 @@ export default function App() {
     setSavedAt(Date.now());
   };
   const submitForm = () => {
-    persistSubmission({ ...draftSubmission, status: "submitted" });
+    persistSubmission({ ...draftSubmission, status: "submitted", dikirimPada: new Date().toISOString() });
     setView("list");
   };
   const reopenForm = () => {
     persistSubmission({ ...draftSubmission, status: "draft_fill" });
+  };
+
+  // ---- Riwayat & laporan ----
+  const openLaporan = (templateId) => {
+    setLaporanTemplateId(templateId);
+    setView("laporan");
   };
 
   // ---- Tindak lanjut / RTM (Admin) ----
@@ -3478,7 +4685,7 @@ export default function App() {
     setView("edit");
   };
   const finishReview = () => {
-    persistSubmission({ ...draftSubmission, status: "reviewed" });
+    persistSubmission({ ...draftSubmission, status: "reviewed", dinilaiPada: new Date().toISOString() });
     setView("list");
   };
 
@@ -3513,13 +4720,51 @@ export default function App() {
         {role === "admin" && section === "templates" && view === "edit" && draftTemplate && (
           <TemplateBuilder template={draftTemplate} onChange={setDraftTemplate} onBack={() => setView("list")} onSave={saveTemplate} submissions={submissions} />
         )}
-        {role === "admin" && section === "rtm" && (
+        {(role === "admin" || role === "pimpinan") && section === "rtm" && (
           <RtmWorkspace
             templates={templates}
             submissions={submissions}
+            users={users}
             rtlStore={rtlStore}
             onSaveRtl={saveRtl}
             onApply={terapkanRtl}
+            bolehMenerapkan={role === "pimpinan"}
+          />
+        )}
+        {section === "riwayat" && view === "list" && (
+          <RiwayatPenilaian
+            templates={templates}
+            submissions={submissions}
+            onOpenLaporan={openLaporan}
+          />
+        )}
+        {section === "riwayat" && view === "laporan" && laporanTemplateId && (() => {
+          const tpl = templates.find((t) => t.id === laporanTemplateId);
+          if (!tpl) return null;
+          return (
+            <LaporanPenilaian
+              template={tpl}
+              submissions={submissions}
+              users={users}
+              onBack={() => { setView("list"); setLaporanTemplateId(null); }}
+            />
+          );
+        })()}
+        {role === "pengisi" && section === "tindak-lanjut" && (
+          <TindakLanjutUnit
+            templates={templates}
+            submissions={submissions}
+            rtlStore={rtlStore}
+            currentUser={currentUser}
+            onSaveRtl={saveRtl}
+          />
+        )}
+        {section === "rtl" && (
+          <LaporanRtl
+            templates={templates}
+            submissions={submissions}
+            rtlStore={rtlStore}
+            users={users}
           />
         )}
         {role === "admin" && section === "users" && (
